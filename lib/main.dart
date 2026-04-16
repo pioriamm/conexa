@@ -112,6 +112,15 @@ class _ProcessingPageState extends State<ProcessingPage> {
         _loadingConexa = false;
         _status = e.message;
       });
+    } catch (e, s) {
+      debugPrint('Erro inesperado ao carregar planilha: $e');
+      debugPrint('$s');
+      setState(() {
+        _loadingLocaliza = false;
+        _loadingConexa = false;
+        _status =
+            'Erro ao ler a planilha. Verifique formato e conteúdo.';
+      });
     }
   }
 
