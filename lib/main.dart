@@ -1,122 +1,524 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ConexaApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ConexaApp extends StatelessWidget {
+  const ConexaApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Conexa Cobrança',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const ProcessingPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class ProcessingPage extends StatefulWidget {
+  const ProcessingPage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<ProcessingPage> createState() => _ProcessingPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _ProcessingPageState extends State<ProcessingPage> {
+  Uint8List? _localizaBytes;
+  Uint8List? _conexaBytes;
+  String? _localizaName;
+  String? _conexaName;
+  bool _loading = false;
+  String _status = '';
+  final _tokenController = TextEditingController(
+    text: '0e5c4256-d385-4ec3-a60d-b035c812ef7c',
+  );
 
-  void _incrementCounter() {
+  List<OutputRow> _resultRows = [];
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFile(bool isLocaliza) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx', 'xlsm'],
+      withData: true,
+    );
+
+    if (picked == null || picked.files.isEmpty) {
+      return;
+    }
+
+    final file = picked.files.first;
+    if (file.bytes == null) {
+      setState(() {
+        _status = 'Não foi possível ler o arquivo selecionado.';
+      });
+      return;
+    }
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      if (isLocaliza) {
+        _localizaBytes = file.bytes;
+        _localizaName = file.name;
+      } else {
+        _conexaBytes = file.bytes;
+        _conexaName = file.name;
+      }
     });
+  }
+
+  Future<void> _process() async {
+    if (_localizaBytes == null || _conexaBytes == null) {
+      setState(() {
+        _status = 'Envie as duas planilhas antes de processar.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _status = 'Processando planilhas...';
+      _resultRows = [];
+    });
+
+    try {
+      final localizaMap = _readLocaliza(_localizaBytes!);
+      final conexaRows = _readConexa(_conexaBytes!);
+
+      final outputs = <OutputRow>[];
+      for (final row in conexaRows) {
+        final cnpjDigits = digitsOnly(row.cpfCnpj);
+        final localiza = localizaMap[cnpjDigits];
+
+        final regraCobranca = (localiza?.parceiro.trim().isNotEmpty ?? false)
+            ? '3'
+            : '7';
+
+        final ticketId = await _fetchMovideskTicketId(
+          formattedCnpj(cnpjDigits),
+          _tokenController.text.trim(),
+        );
+
+        outputs.add(
+          OutputRow(
+            idCobranca: row.idCobranca,
+            cpfCnpj: row.cpfCnpj,
+            razaoSocialCliente: row.razaoSocialCliente,
+            valor: row.valor,
+            vencimento: row.vencimento,
+            prazoCobranca: regraCobranca,
+            ticketMovideskUrl: ticketId == null
+                ? ''
+                : 'https://suporte.conciliadora.com.br/Ticket/Edit/$ticketId',
+            grupo: localiza?.grupo ?? '',
+            parceiro: localiza?.parceiro ?? '',
+          ),
+        );
+      }
+
+      setState(() {
+        _resultRows = outputs;
+        _status =
+            'Processamento concluído. ${outputs.length} registros processados.';
+      });
+    } catch (e) {
+      setState(() {
+        _status = 'Erro ao processar: $e';
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<int?> _fetchMovideskTicketId(String cnpjFormatado, String token) async {
+    if (token.isEmpty || cnpjFormatado.isEmpty) {
+      return null;
+    }
+
+    final filter =
+        "startswith(subject,'#Cobrança') and customFieldValues/any(cf: cf/customFieldId eq 90531 and cf/value eq '$cnpjFormatado')";
+
+    final uri = Uri.https('api.movidesk.com', '/public/v1/tickets', {
+      'token': token,
+      r'$select': 'id',
+      r'$filter': filter,
+      r'$orderby': 'id desc',
+      r'$top': '1',
+    });
+
+    try {
+      final response = await http.get(uri);
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final dynamic data = jsonDecode(response.body);
+      if (data is List && data.isNotEmpty && data.first is Map<String, dynamic>) {
+        return data.first['id'] as int?;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, LocalizaRow> _readLocaliza(Uint8List bytes) {
+    final excel = Excel.decodeBytes(bytes);
+    final table = excel.tables.values.first;
+    if (table == null || table.maxRows == 0) {
+      throw Exception('Planilha Localiza vazia.');
+    }
+
+    final header = _headerMap(table.rows.first);
+    final cnpjCol = _findColumn(header, ['cnpj', 'cpfcnpj']);
+    final razaoCol = _findColumn(header, ['razaosocial', 'nomerazaosocial']);
+    final grupoCol = _findColumn(header, ['grupo']);
+    final parceiroCol = _findColumn(header, ['parceiro', 'parceirocomercial']);
+
+    if (cnpjCol == null || razaoCol == null || grupoCol == null || parceiroCol == null) {
+      throw Exception(
+        'A planilha Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
+      );
+    }
+
+    final map = <String, LocalizaRow>{};
+    for (var i = 1; i < table.rows.length; i++) {
+      final row = table.rows[i];
+      final cnpj = digitsOnly(_cellValue(row, cnpjCol));
+      if (cnpj.isEmpty) {
+        continue;
+      }
+
+      map.putIfAbsent(
+        cnpj,
+        () => LocalizaRow(
+          cnpj: cnpj,
+          razaoSocial: _cellValue(row, razaoCol),
+          grupo: _cellValue(row, grupoCol),
+          parceiro: _cellValue(row, parceiroCol),
+        ),
+      );
+    }
+
+    return map;
+  }
+
+  List<ConexaRow> _readConexa(Uint8List bytes) {
+    final excel = Excel.decodeBytes(bytes);
+    final table = excel.tables.values.first;
+    if (table == null || table.maxRows == 0) {
+      throw Exception('Planilha Conexa vazia.');
+    }
+
+    final header = _headerMap(table.rows.first);
+    final idCol = _findColumn(header, ['iddacobranca', 'idcobranca']);
+    final cpfCnpjCol = _findColumn(header, ['cpfcnpj', 'cpf/cnpj']);
+    final razaoCol = _findColumn(header, ['razaosocialcliente', 'razaosocial']);
+    final valorCol = _findColumn(header, ['valor']);
+    final vencimentoCol = _findColumn(header, ['vencimento']);
+
+    if (idCol == null ||
+        cpfCnpjCol == null ||
+        razaoCol == null ||
+        valorCol == null ||
+        vencimentoCol == null) {
+      throw Exception(
+        'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
+      );
+    }
+
+    final rows = <ConexaRow>[];
+    for (var i = 1; i < table.rows.length; i++) {
+      final row = table.rows[i];
+      final cpfCnpj = _cellValue(row, cpfCnpjCol);
+      if (digitsOnly(cpfCnpj).isEmpty) {
+        continue;
+      }
+
+      rows.add(
+        ConexaRow(
+          idCobranca: _cellValue(row, idCol),
+          cpfCnpj: cpfCnpj,
+          razaoSocialCliente: _cellValue(row, razaoCol),
+          valor: _cellValue(row, valorCol),
+          vencimento: _cellValue(row, vencimentoCol),
+        ),
+      );
+    }
+
+    return rows;
+  }
+
+  Map<String, int> _headerMap(List<Data?> headerRow) {
+    final map = <String, int>{};
+    for (var i = 0; i < headerRow.length; i++) {
+      final key = normalizeKey(headerRow[i]?.value.toString() ?? '');
+      if (key.isNotEmpty) {
+        map[key] = i;
+      }
+    }
+    return map;
+  }
+
+  int? _findColumn(Map<String, int> header, List<String> candidates) {
+    for (final candidate in candidates) {
+      final normalized = normalizeKey(candidate);
+      if (header.containsKey(normalized)) {
+        return header[normalized];
+      }
+    }
+
+    for (final entry in header.entries) {
+      for (final candidate in candidates) {
+        final normalized = normalizeKey(candidate);
+        if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
+          return entry.value;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String _cellValue(List<Data?> row, int index) {
+    if (index < 0 || index >= row.length) {
+      return '';
+    }
+    final value = row[index]?.value;
+    if (value == null) {
+      return '';
+    }
+    return value.toString().trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      appBar: AppBar(title: const Text('Conexa - Consolidador de Cobrança')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            const Text(
+              '1) Envie a planilha Localiza Estabelecimento\n'
+              '2) Envie a planilha Conexa\n'
+              '3) Clique em Processar',
             ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _loading ? null : () => _pickFile(true),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Upload Localiza'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _loading ? null : () => _pickFile(false),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Upload Conexa'),
+                ),
+                SizedBox(
+                  width: 380,
+                  child: TextField(
+                    controller: _tokenController,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'Token Movidesk',
+                    ),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _loading ? null : _process,
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.play_arrow),
+                  label: const Text('Processar'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_localizaName != null) Text('Localiza: $_localizaName'),
+            if (_conexaName != null) Text('Conexa: $_conexaName'),
+            const SizedBox(height: 8),
+            if (_status.isNotEmpty) Text(_status),
+            const SizedBox(height: 16),
+            if (_resultRows.isNotEmpty)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('ID da Cobrança')),
+                    DataColumn(label: Text('CPF/CNPJ')),
+                    DataColumn(label: Text('Razão Social Cliente')),
+                    DataColumn(label: Text('Valor')),
+                    DataColumn(label: Text('Vencimento')),
+                    DataColumn(label: Text('Prazo de cobrança')),
+                    DataColumn(label: Text('Grupo')),
+                    DataColumn(label: Text('Parceiro')),
+                    DataColumn(label: Text('Ticket Movidesk')),
+                  ],
+                  rows: _resultRows.map((row) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(row.idCobranca)),
+                        DataCell(Text(row.cpfCnpj)),
+                        DataCell(Text(row.razaoSocialCliente)),
+                        DataCell(Text(row.valor)),
+                        DataCell(Text(row.vencimento)),
+                        DataCell(Text(row.prazoCobranca)),
+                        DataCell(Text(row.grupo)),
+                        DataCell(Text(row.parceiro)),
+                        DataCell(
+                          row.ticketMovideskUrl.isEmpty
+                              ? const Text('-')
+                              : InkWell(
+                                  onTap: () async {
+                                    final uri = Uri.parse(row.ticketMovideskUrl);
+                                    await launchUrl(uri);
+                                  },
+                                  child: Text(
+                                    row.ticketMovideskUrl,
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
     );
   }
+}
+
+class LocalizaRow {
+  LocalizaRow({
+    required this.cnpj,
+    required this.razaoSocial,
+    required this.grupo,
+    required this.parceiro,
+  });
+
+  final String cnpj;
+  final String razaoSocial;
+  final String grupo;
+  final String parceiro;
+}
+
+class ConexaRow {
+  ConexaRow({
+    required this.idCobranca,
+    required this.cpfCnpj,
+    required this.razaoSocialCliente,
+    required this.valor,
+    required this.vencimento,
+  });
+
+  final String idCobranca;
+  final String cpfCnpj;
+  final String razaoSocialCliente;
+  final String valor;
+  final String vencimento;
+}
+
+class OutputRow {
+  OutputRow({
+    required this.idCobranca,
+    required this.cpfCnpj,
+    required this.razaoSocialCliente,
+    required this.valor,
+    required this.vencimento,
+    required this.prazoCobranca,
+    required this.ticketMovideskUrl,
+    required this.grupo,
+    required this.parceiro,
+  });
+
+  final String idCobranca;
+  final String cpfCnpj;
+  final String razaoSocialCliente;
+  final String valor;
+  final String vencimento;
+  final String prazoCobranca;
+  final String ticketMovideskUrl;
+  final String grupo;
+  final String parceiro;
+}
+
+String digitsOnly(String input) => input.replaceAll(RegExp(r'\D'), '');
+
+String formattedCnpj(String digits) {
+  if (digits.length != 14) {
+    return digits;
+  }
+
+  return '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12, 14)}';
+}
+
+String normalizeKey(String input) {
+  var text = input.toLowerCase();
+
+  const accents = {
+    'á': 'a',
+    'à': 'a',
+    'ã': 'a',
+    'â': 'a',
+    'ä': 'a',
+    'é': 'e',
+    'è': 'e',
+    'ê': 'e',
+    'ë': 'e',
+    'í': 'i',
+    'ì': 'i',
+    'î': 'i',
+    'ï': 'i',
+    'ó': 'o',
+    'ò': 'o',
+    'õ': 'o',
+    'ô': 'o',
+    'ö': 'o',
+    'ú': 'u',
+    'ù': 'u',
+    'û': 'u',
+    'ü': 'u',
+    'ç': 'c',
+  };
+
+  accents.forEach((key, value) {
+    text = text.replaceAll(key, value);
+  });
+
+  return text.replaceAll(RegExp(r'[^a-z0-9]'), '');
 }
