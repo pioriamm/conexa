@@ -36,26 +36,31 @@ class ProcessingPage extends StatefulWidget {
 }
 
 class _ProcessingPageState extends State<ProcessingPage> {
-  Uint8List? _localizaBytes;
-  Uint8List? _conexaBytes;
   String? _localizaName;
   String? _conexaName;
+  Map<String, LocalizaRow>? _localizaRows;
+  List<ConexaRow>? _conexaRows;
+  bool _loadingLocaliza = false;
+  bool _loadingConexa = false;
   bool _loading = false;
   String _status = '';
-  bool _showToken = false;
-  final _tokenController = TextEditingController(
-    text: '0e5c4256-d385-4ec3-a60d-b035c812ef7c',
-  );
+  static const _movideskToken = '0e5c4256-d385-4ec3-a60d-b035c812ef7c';
 
   List<OutputRow> _resultRows = [];
 
-  @override
-  void dispose() {
-    _tokenController.dispose();
-    super.dispose();
-  }
-
   Future<void> _pickFile(bool isLocaliza) async {
+    if (isLocaliza) {
+      setState(() {
+        _loadingLocaliza = true;
+        _status = 'Carregando arquivo Localiza...';
+      });
+    } else {
+      setState(() {
+        _loadingConexa = true;
+        _status = 'Carregando arquivo Conexa...';
+      });
+    }
+
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx', 'xlsm'],
@@ -63,32 +68,57 @@ class _ProcessingPageState extends State<ProcessingPage> {
     );
 
     if (picked == null || picked.files.isEmpty) {
+      setState(() {
+        _loadingLocaliza = false;
+        _loadingConexa = false;
+        _status = 'Seleção cancelada.';
+      });
       return;
     }
 
     final file = picked.files.first;
     if (file.bytes == null) {
       setState(() {
+        _loadingLocaliza = false;
+        _loadingConexa = false;
         _status = 'Não foi possível ler o arquivo selecionado.';
       });
       return;
     }
 
-    setState(() {
+    try {
       if (isLocaliza) {
-        _localizaBytes = file.bytes;
-        _localizaName = file.name;
+        final parsed = _readLocaliza(file.bytes!);
+        setState(() {
+          _localizaName = file.name;
+          _localizaRows = parsed;
+          _conexaName = null;
+          _conexaRows = null;
+          _loadingLocaliza = false;
+          _status = 'Arquivo Localiza carregado com sucesso.';
+        });
       } else {
-        _conexaBytes = file.bytes;
-        _conexaName = file.name;
+        final parsed = _readConexa(file.bytes!);
+        setState(() {
+          _conexaName = file.name;
+          _conexaRows = parsed;
+          _loadingConexa = false;
+          _status = 'Arquivo Conexa carregado com sucesso.';
+        });
       }
-    });
+    } on ProcessingException catch (e) {
+      setState(() {
+        _loadingLocaliza = false;
+        _loadingConexa = false;
+        _status = e.message;
+      });
+    }
   }
 
   Future<void> _process() async {
-    if (_localizaBytes == null || _conexaBytes == null) {
+    if (_localizaRows == null || _conexaRows == null) {
       setState(() {
-        _status = 'Envie as duas planilhas antes de processar.';
+        _status = 'Envie e carregue as duas planilhas antes de processar.';
       });
       return;
     }
@@ -100,8 +130,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
     });
 
     try {
-      final localizaMap = _readLocaliza(_localizaBytes!);
-      final conexaRows = _readConexa(_conexaBytes!);
+      final localizaMap = _localizaRows!;
+      final conexaRows = _conexaRows!;
 
       final outputs = <OutputRow>[];
       for (final row in conexaRows) {
@@ -114,7 +144,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
 
         final ticketId = await _fetchMovideskTicketId(
           formattedCnpj(cnpjDigits),
-          _tokenController.text.trim(),
+          _movideskToken,
         );
 
         outputs.add(
@@ -381,41 +411,32 @@ class _ProcessingPageState extends State<ProcessingPage> {
               runSpacing: 12,
               children: [
                 ElevatedButton.icon(
-                  onPressed: _loading ? null : () => _pickFile(true),
+                  onPressed: (_loading ||
+                          _loadingLocaliza ||
+                          _loadingConexa)
+                      ? null
+                      : () => _pickFile(true),
                   icon: const Icon(Icons.upload_file),
                   label: const Text('Upload Localiza'),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _loading ? null : () => _pickFile(false),
+                  onPressed: (_loading ||
+                          _loadingLocaliza ||
+                          _loadingConexa ||
+                          _localizaRows == null)
+                      ? null
+                      : () => _pickFile(false),
                   icon: const Icon(Icons.upload_file),
                   label: const Text('Upload Conexa'),
                 ),
-                SizedBox(
-                  width: 380,
-                  child: TextField(
-                    controller: _tokenController,
-                    obscureText: !_showToken,
-                    enableSuggestions: false,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Token Movidesk',
-                      suffixIcon: IconButton(
-                        tooltip: _showToken ? 'Ocultar token' : 'Mostrar token',
-                        onPressed: () {
-                          setState(() {
-                            _showToken = !_showToken;
-                          });
-                        },
-                        icon: Icon(
-                          _showToken ? Icons.visibility_off : Icons.visibility,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 FilledButton.icon(
-                  onPressed: _loading ? null : _process,
+                  onPressed: (_loading ||
+                          _loadingLocaliza ||
+                          _loadingConexa ||
+                          _localizaRows == null ||
+                          _conexaRows == null)
+                      ? null
+                      : _process,
                   icon: _loading
                       ? const SizedBox(
                           width: 18,
@@ -430,6 +451,24 @@ class _ProcessingPageState extends State<ProcessingPage> {
             const SizedBox(height: 12),
             if (_localizaName != null) Text('Localiza: $_localizaName'),
             if (_conexaName != null) Text('Conexa: $_conexaName'),
+            if (_loadingLocaliza || _loadingConexa) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _loadingLocaliza
+                        ? 'Carregando arquivo Localiza...'
+                        : 'Carregando arquivo Conexa...',
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             if (_status.isNotEmpty) Text(_status),
             const SizedBox(height: 16),
