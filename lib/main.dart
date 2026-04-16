@@ -42,6 +42,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
   String? _conexaName;
   bool _loading = false;
   String _status = '';
+  bool _showToken = false;
   final _tokenController = TextEditingController(
     text: '0e5c4256-d385-4ec3-a60d-b035c812ef7c',
   );
@@ -138,9 +139,14 @@ class _ProcessingPageState extends State<ProcessingPage> {
         _status =
             'Processamento concluído. ${outputs.length} registros processados.';
       });
+    } on ProcessingException catch (e) {
+      setState(() {
+        _status = e.message;
+      });
     } catch (e) {
       setState(() {
-        _status = 'Erro ao processar: $e';
+        _status =
+            'Ocorreu um erro inesperado ao processar os arquivos. Verifique se as planilhas estão no layout correto e tente novamente.';
       });
     } finally {
       setState(() {
@@ -168,24 +174,63 @@ class _ProcessingPageState extends State<ProcessingPage> {
     try {
       final response = await http.get(uri);
       if (response.statusCode != 200) {
+        throw ProcessingException(
+          'Falha ao consultar o Movidesk (HTTP ${response.statusCode}). Confira se o token está correto e ativo.',
+        );
+      }
+
+      if (response.body.trim().isEmpty) {
+        throw const ProcessingException(
+          'A API do Movidesk retornou resposta vazia. Tente novamente em alguns instantes.',
+        );
+      }
+
+      final dynamic data;
+      try {
+        data = jsonDecode(response.body);
+      } on FormatException {
+        throw const ProcessingException(
+          'A resposta do Movidesk veio em formato inválido. Tente novamente em alguns instantes.',
+        );
+      }
+
+      if (data is! List) {
+        throw const ProcessingException(
+          'Formato de retorno inesperado do Movidesk. Verifique o token e tente novamente.',
+        );
+      }
+
+      if (data.isEmpty) {
         return null;
       }
 
-      final dynamic data = jsonDecode(response.body);
-      if (data is List && data.isNotEmpty && data.first is Map<String, dynamic>) {
-        return data.first['id'] as int?;
+      final first = data.first;
+      if (first is Map<String, dynamic>) {
+        return first['id'] as int?;
       }
-      return null;
+      throw const ProcessingException(
+        'Não foi possível identificar o ticket retornado pelo Movidesk.',
+      );
+    } on ProcessingException {
+      rethrow;
     } catch (_) {
-      return null;
+      throw const ProcessingException(
+        'Erro de conexão com o Movidesk. Verifique sua internet e tente novamente.',
+      );
     }
   }
 
   Map<String, LocalizaRow> _readLocaliza(Uint8List bytes) {
     final excel = Excel.decodeBytes(bytes);
+    if (excel.tables.isEmpty) {
+      throw const ProcessingException(
+        'A planilha Localiza está vazia ou sem aba válida.',
+      );
+    }
+
     final table = excel.tables.values.first;
     if (table == null || table.maxRows == 0) {
-      throw Exception('Planilha Localiza vazia.');
+      throw const ProcessingException('A planilha Localiza está vazia.');
     }
 
     final header = _headerMap(table.rows.first);
@@ -195,7 +240,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
     final parceiroCol = _findColumn(header, ['parceiro', 'parceirocomercial']);
 
     if (cnpjCol == null || razaoCol == null || grupoCol == null || parceiroCol == null) {
-      throw Exception(
+      throw const ProcessingException(
         'A planilha Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
       );
     }
@@ -224,9 +269,15 @@ class _ProcessingPageState extends State<ProcessingPage> {
 
   List<ConexaRow> _readConexa(Uint8List bytes) {
     final excel = Excel.decodeBytes(bytes);
+    if (excel.tables.isEmpty) {
+      throw const ProcessingException(
+        'A planilha Conexa está vazia ou sem aba válida.',
+      );
+    }
+
     final table = excel.tables.values.first;
     if (table == null || table.maxRows == 0) {
-      throw Exception('Planilha Conexa vazia.');
+      throw const ProcessingException('A planilha Conexa está vazia.');
     }
 
     final header = _headerMap(table.rows.first);
@@ -241,7 +292,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
         razaoCol == null ||
         valorCol == null ||
         vencimentoCol == null) {
-      throw Exception(
+      throw const ProcessingException(
         'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
       );
     }
@@ -343,9 +394,23 @@ class _ProcessingPageState extends State<ProcessingPage> {
                   width: 380,
                   child: TextField(
                     controller: _tokenController,
-                    decoration: const InputDecoration(
+                    obscureText: !_showToken,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    decoration: InputDecoration(
                       border: OutlineInputBorder(),
                       labelText: 'Token Movidesk',
+                      suffixIcon: IconButton(
+                        tooltip: _showToken ? 'Ocultar token' : 'Mostrar token',
+                        onPressed: () {
+                          setState(() {
+                            _showToken = !_showToken;
+                          });
+                        },
+                        icon: Icon(
+                          _showToken ? Icons.visibility_off : Icons.visibility,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -475,6 +540,12 @@ class OutputRow {
   final String ticketMovideskUrl;
   final String grupo;
   final String parceiro;
+}
+
+class ProcessingException implements Exception {
+  const ProcessingException(this.message);
+
+  final String message;
 }
 
 String digitsOnly(String input) => input.replaceAll(RegExp(r'\D'), '');
