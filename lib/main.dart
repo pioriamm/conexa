@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -88,7 +89,11 @@ class _ProcessingPageState extends State<ProcessingPage> {
 
     try {
       if (isLocaliza) {
-        final parsed = _readLocaliza(file.bytes!);
+        setState(() {
+          _status = 'Lendo planilha Localiza...';
+        });
+        final parsedPayload = await compute(readLocalizaForCompute, file.bytes!);
+        final parsed = _localizaRowsFromPayload(parsedPayload);
         setState(() {
           _localizaName = file.name;
           _localizaRows = parsed;
@@ -98,7 +103,11 @@ class _ProcessingPageState extends State<ProcessingPage> {
           _status = 'Arquivo Localiza carregado com sucesso.';
         });
       } else {
-        final parsed = _readConexa(file.bytes!);
+        setState(() {
+          _status = 'Lendo planilha Conexa...';
+        });
+        final parsedPayload = await compute(readConexaForCompute, file.bytes!);
+        final parsed = _conexaRowsFromPayload(parsedPayload);
         setState(() {
           _conexaName = file.name;
           _conexaRows = parsed;
@@ -111,6 +120,12 @@ class _ProcessingPageState extends State<ProcessingPage> {
         _loadingLocaliza = false;
         _loadingConexa = false;
         _status = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _loadingLocaliza = false;
+        _loadingConexa = false;
+        _status = _friendlyReadErrorMessage(e, isLocaliza);
       });
     }
   }
@@ -250,145 +265,45 @@ class _ProcessingPageState extends State<ProcessingPage> {
     }
   }
 
-  Map<String, LocalizaRow> _readLocaliza(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
-    if (excel.tables.isEmpty) {
-      throw const ProcessingException(
-        'A planilha Localiza está vazia ou sem aba válida.',
-      );
-    }
-
-    final table = excel.tables.values.first;
-    if (table == null || table.maxRows == 0) {
-      throw const ProcessingException('A planilha Localiza está vazia.');
-    }
-
-    final header = _headerMap(table.rows.first);
-    final cnpjCol = _findColumn(header, ['cnpj', 'cpfcnpj']);
-    final razaoCol = _findColumn(header, ['razaosocial', 'nomerazaosocial']);
-    final grupoCol = _findColumn(header, ['grupo']);
-    final parceiroCol = _findColumn(header, ['parceiro', 'parceirocomercial']);
-
-    if (cnpjCol == null || razaoCol == null || grupoCol == null || parceiroCol == null) {
-      throw const ProcessingException(
-        'A planilha Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
-      );
-    }
-
-    final map = <String, LocalizaRow>{};
-    for (var i = 1; i < table.rows.length; i++) {
-      final row = table.rows[i];
-      final cnpj = digitsOnly(_cellValue(row, cnpjCol));
-      if (cnpj.isEmpty) {
-        continue;
-      }
-
-      map.putIfAbsent(
+  Map<String, LocalizaRow> _localizaRowsFromPayload(
+    Map<String, Map<String, String>> payload,
+  ) {
+    return payload.map(
+      (cnpj, value) => MapEntry(
         cnpj,
-        () => LocalizaRow(
+        LocalizaRow(
           cnpj: cnpj,
-          razaoSocial: _cellValue(row, razaoCol),
-          grupo: _cellValue(row, grupoCol),
-          parceiro: _cellValue(row, parceiroCol),
+          razaoSocial: value['razaoSocial'] ?? '',
+          grupo: value['grupo'] ?? '',
+          parceiro: value['parceiro'] ?? '',
         ),
-      );
-    }
-
-    return map;
+      ),
+    );
   }
 
-  List<ConexaRow> _readConexa(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
-    if (excel.tables.isEmpty) {
-      throw const ProcessingException(
-        'A planilha Conexa está vazia ou sem aba válida.',
-      );
-    }
-
-    final table = excel.tables.values.first;
-    if (table == null || table.maxRows == 0) {
-      throw const ProcessingException('A planilha Conexa está vazia.');
-    }
-
-    final header = _headerMap(table.rows.first);
-    final idCol = _findColumn(header, ['iddacobranca', 'idcobranca']);
-    final cpfCnpjCol = _findColumn(header, ['cpfcnpj', 'cpf/cnpj']);
-    final razaoCol = _findColumn(header, ['razaosocialcliente', 'razaosocial']);
-    final valorCol = _findColumn(header, ['valor']);
-    final vencimentoCol = _findColumn(header, ['vencimento']);
-
-    if (idCol == null ||
-        cpfCnpjCol == null ||
-        razaoCol == null ||
-        valorCol == null ||
-        vencimentoCol == null) {
-      throw const ProcessingException(
-        'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
-      );
-    }
-
-    final rows = <ConexaRow>[];
-    for (var i = 1; i < table.rows.length; i++) {
-      final row = table.rows[i];
-      final cpfCnpj = _cellValue(row, cpfCnpjCol);
-      if (digitsOnly(cpfCnpj).isEmpty) {
-        continue;
-      }
-
-      rows.add(
-        ConexaRow(
-          idCobranca: _cellValue(row, idCol),
-          cpfCnpj: cpfCnpj,
-          razaoSocialCliente: _cellValue(row, razaoCol),
-          valor: _cellValue(row, valorCol),
-          vencimento: _cellValue(row, vencimentoCol),
-        ),
-      );
-    }
-
-    return rows;
+  List<ConexaRow> _conexaRowsFromPayload(List<Map<String, String>> payload) {
+    return payload
+        .map(
+          (row) => ConexaRow(
+            idCobranca: row['idCobranca'] ?? '',
+            cpfCnpj: row['cpfCnpj'] ?? '',
+            razaoSocialCliente: row['razaoSocialCliente'] ?? '',
+            valor: row['valor'] ?? '',
+            vencimento: row['vencimento'] ?? '',
+          ),
+        )
+        .toList();
   }
 
-  Map<String, int> _headerMap(List<Data?> headerRow) {
-    final map = <String, int>{};
-    for (var i = 0; i < headerRow.length; i++) {
-      final key = normalizeKey(headerRow[i]?.value.toString() ?? '');
-      if (key.isNotEmpty) {
-        map[key] = i;
-      }
-    }
-    return map;
-  }
-
-  int? _findColumn(Map<String, int> header, List<String> candidates) {
-    for (final candidate in candidates) {
-      final normalized = normalizeKey(candidate);
-      if (header.containsKey(normalized)) {
-        return header[normalized];
-      }
+  String _friendlyReadErrorMessage(Object error, bool isLocaliza) {
+    final raw = error.toString();
+    final cleaned = raw.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+    if (cleaned.isNotEmpty && cleaned != raw) {
+      return cleaned;
     }
 
-    for (final entry in header.entries) {
-      for (final candidate in candidates) {
-        final normalized = normalizeKey(candidate);
-        if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
-          return entry.value;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  String _cellValue(List<Data?> row, int index) {
-    if (index < 0 || index >= row.length) {
-      return '';
-    }
-    final value = row[index]?.value;
-    if (value == null) {
-      return '';
-    }
-    return value.toString().trim();
+    final origem = isLocaliza ? 'Localiza' : 'Conexa';
+    return 'Não foi possível ler a planilha $origem. Verifique o layout do arquivo e tente novamente.';
   }
 
   @override
@@ -525,6 +440,149 @@ class _ProcessingPageState extends State<ProcessingPage> {
       ),
     );
   }
+}
+
+Map<String, Map<String, String>> readLocalizaForCompute(Uint8List bytes) {
+  final excel = Excel.decodeBytes(bytes);
+  if (excel.tables.isEmpty) {
+    throw const ProcessingException(
+      'A planilha Localiza está vazia ou sem aba válida.',
+    );
+  }
+
+  final table = excel.tables.values.first;
+  if (table == null || table.maxRows == 0) {
+    throw const ProcessingException('A planilha Localiza está vazia.');
+  }
+
+  final header = _headerMap(table.rows.first);
+  final cnpjCol = _findColumn(header, ['cnpj', 'cpfcnpj']);
+  final razaoCol = _findColumn(header, ['razaosocial', 'nomerazaosocial']);
+  final grupoCol = _findColumn(header, ['grupo']);
+  final parceiroCol = _findColumn(header, ['parceiro', 'parceirocomercial']);
+
+  if (cnpjCol == null ||
+      razaoCol == null ||
+      grupoCol == null ||
+      parceiroCol == null) {
+    throw const ProcessingException(
+      'A planilha Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
+    );
+  }
+
+  final map = <String, Map<String, String>>{};
+  for (var i = 1; i < table.rows.length; i++) {
+    final row = table.rows[i];
+    final cnpj = digitsOnly(_cellValue(row, cnpjCol));
+    if (cnpj.isEmpty) {
+      continue;
+    }
+
+    map.putIfAbsent(
+      cnpj,
+      () => <String, String>{
+        'razaoSocial': _cellValue(row, razaoCol),
+        'grupo': _cellValue(row, grupoCol),
+        'parceiro': _cellValue(row, parceiroCol),
+      },
+    );
+  }
+
+  return map;
+}
+
+List<Map<String, String>> readConexaForCompute(Uint8List bytes) {
+  final excel = Excel.decodeBytes(bytes);
+  if (excel.tables.isEmpty) {
+    throw const ProcessingException(
+      'A planilha Conexa está vazia ou sem aba válida.',
+    );
+  }
+
+  final table = excel.tables.values.first;
+  if (table == null || table.maxRows == 0) {
+    throw const ProcessingException('A planilha Conexa está vazia.');
+  }
+
+  final header = _headerMap(table.rows.first);
+  final idCol = _findColumn(header, ['iddacobranca', 'idcobranca']);
+  final cpfCnpjCol = _findColumn(header, ['cpfcnpj', 'cpf/cnpj']);
+  final razaoCol = _findColumn(header, ['razaosocialcliente', 'razaosocial']);
+  final valorCol = _findColumn(header, ['valor']);
+  final vencimentoCol = _findColumn(header, ['vencimento']);
+
+  if (idCol == null ||
+      cpfCnpjCol == null ||
+      razaoCol == null ||
+      valorCol == null ||
+      vencimentoCol == null) {
+    throw const ProcessingException(
+      'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
+    );
+  }
+
+  final rows = <Map<String, String>>[];
+  for (var i = 1; i < table.rows.length; i++) {
+    final row = table.rows[i];
+    final cpfCnpj = _cellValue(row, cpfCnpjCol);
+    if (digitsOnly(cpfCnpj).isEmpty) {
+      continue;
+    }
+
+    rows.add(
+      <String, String>{
+        'idCobranca': _cellValue(row, idCol),
+        'cpfCnpj': cpfCnpj,
+        'razaoSocialCliente': _cellValue(row, razaoCol),
+        'valor': _cellValue(row, valorCol),
+        'vencimento': _cellValue(row, vencimentoCol),
+      },
+    );
+  }
+
+  return rows;
+}
+
+Map<String, int> _headerMap(List<Data?> headerRow) {
+  final map = <String, int>{};
+  for (var i = 0; i < headerRow.length; i++) {
+    final key = normalizeKey(headerRow[i]?.value.toString() ?? '');
+    if (key.isNotEmpty) {
+      map[key] = i;
+    }
+  }
+  return map;
+}
+
+int? _findColumn(Map<String, int> header, List<String> candidates) {
+  for (final candidate in candidates) {
+    final normalized = normalizeKey(candidate);
+    if (header.containsKey(normalized)) {
+      return header[normalized];
+    }
+  }
+
+  for (final entry in header.entries) {
+    for (final candidate in candidates) {
+      final normalized = normalizeKey(candidate);
+      if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+  }
+
+  return null;
+}
+
+String _cellValue(List<Data?> row, int index) {
+  if (index < 0 || index >= row.length) {
+    return '';
+  }
+  final value = row[index]?.value;
+  if (value == null) {
+    return '';
+  }
+  return value.toString().trim();
 }
 
 class LocalizaRow {
