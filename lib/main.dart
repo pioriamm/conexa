@@ -975,14 +975,9 @@ class _ProcessingPageState extends State<ProcessingPage>
                 ? FilledButton.icon(
                     onPressed: onPressed,
                     icon: status == StepStatus.processando
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
+                        ? _buildProcessingSpinnerIcon(
+                            color: Colors.white,
+                            size: 18,
                           )
                         : const Icon(Icons.play_arrow, size: 18),
                     label: Text(buttonLabel),
@@ -1211,19 +1206,9 @@ class _ProcessingPageState extends State<ProcessingPage>
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: _loading
-                        ? AnimatedBuilder(
-                            animation: _statusSpinController,
-                            child: const Icon(
-                              Icons.sync,
-                              color: AppColors.primary,
-                              size: 18,
-                            ),
-                            builder: (context, child) {
-                              return Transform.rotate(
-                                angle: _statusSpinController.value * 2 * math.pi,
-                                child: child,
-                              );
-                            },
+                        ? _buildProcessingSpinnerIcon(
+                            color: AppColors.primary,
+                            size: 18,
                           )
                         : const Icon(
                             Icons.task_alt_outlined,
@@ -1476,113 +1461,136 @@ class _ProcessingPageState extends State<ProcessingPage>
   }
 
   Widget _buildResultsTable(List<OutputRow> pageRows) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 1100),
-        child: DataTable(
-          headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
-          headingTextStyle: const TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-            letterSpacing: 0.4,
-          ),
-          dataTextStyle: const TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 13,
-            color: AppColors.textPrimary,
-          ),
-          headingRowHeight: 44,
-          dataRowMinHeight: 48,
-          dataRowMaxHeight: 56,
-          horizontalMargin: 20,
-          columnSpacing: 28,
-          dividerThickness: 1,
-          columns: const [
-            DataColumn(label: Text('ID COBRANÇA')),
-            DataColumn(label: Text('CPF/CNPJ')),
-            DataColumn(label: Text('RAZÃO SOCIAL')),
-            DataColumn(label: Text('VALOR'), numeric: true),
-            DataColumn(label: Text('VENCIMENTO')),
-            DataColumn(label: Text('REGRA')),
-            DataColumn(label: Text('GRUPO')),
-            DataColumn(label: Text('TICKET')),
-          ],
-          rows: List.generate(pageRows.length, (index) {
-            final row = pageRows[index];
-            final zebra = index.isOdd;
-            return DataRow(
-              color: MaterialStateProperty.resolveWith<Color?>((states) {
-                if (states.contains(MaterialState.hovered)) {
-                  return AppColors.primarySoft.withOpacity(0.25);
-                }
-                return zebra ? AppColors.surfaceAlt.withOpacity(0.5) : null;
-              }),
-              cells: [
-                DataCell(Text(
-                  row.idCobranca,
-                  style: const TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                  ),
-                )),
-                DataCell(Text(
-                  row.cpfCnpj,
-                  style: const TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                )),
-                DataCell(
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    child: Text(
-                      row.razaoSocialCliente,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 1100),
+          child: DataTable(
+            headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
+            headingTextStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.4,
+            ),
+            dataTextStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: AppColors.textPrimary,
+            ),
+            headingRowHeight: 44,
+            dataRowMinHeight: 48,
+            dataRowMaxHeight: 56,
+            horizontalMargin: 20,
+            columnSpacing: 28,
+            dividerThickness: 1,
+            columns: const [
+              DataColumn(label: Text('ID COBRANÇA')),
+              DataColumn(label: Text('CPF/CNPJ')),
+              DataColumn(label: Text('RAZÃO SOCIAL')),
+              DataColumn(label: Text('VALOR'), numeric: true),
+              DataColumn(label: Text('VENCIMENTO')),
+              DataColumn(label: Text('REGRA')),
+              DataColumn(label: Text('GRUPO')),
+              DataColumn(label: Text('TICKET')),
+            ],
+            rows: List.generate(pageRows.length, (index) {
+              final row = pageRows[index];
+              final zebra = index.isOdd;
+              return DataRow(
+                color: MaterialStateProperty.resolveWith<Color?>((states) {
+                  if (states.contains(MaterialState.hovered)) {
+                    return AppColors.primarySoft.withOpacity(0.25);
+                  }
+                  return zebra ? AppColors.surfaceAlt.withOpacity(0.5) : null;
+                }),
+                cells: [
+                  DataCell(Text(
+                    row.idCobranca,
+                    style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                    ),
+                  )),
+                  DataCell(Text(
+                    row.cpfCnpj,
+                    style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  )),
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 260),
+                      child: Text(
+                        row.razaoSocialCliente,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                DataCell(Text(
-                  row.valor,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                )),
-                DataCell(Text(
-                  row.vencimento,
-                  style: const TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                )),
-                DataCell(_RegraBadge(value: row.prazoCobranca)),
-                DataCell(_GrupoChip(value: row.grupo)),
-                DataCell(_TicketCell(
-                  ticketId: row.ticketId,
-                  url: row.ticketMovideskUrl,
-                )),
-              ],
-            );
-          }),
+                  DataCell(Text(
+                    row.valor,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  )),
+                  DataCell(Text(
+                    row.vencimento,
+                    style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  )),
+                  DataCell(_RegraBadge(value: row.prazoCobranca)),
+                  DataCell(_GrupoChip(value: row.grupo)),
+                  DataCell(_TicketCell(
+                    ticketId: row.ticketId,
+                    url: row.ticketMovideskUrl,
+                  )),
+                ],
+              );
+            }),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildProcessingSpinnerIcon({
+    required Color color,
+    required double size,
+  }) {
+    return AnimatedBuilder(
+      animation: _statusSpinController,
+      child: Icon(
+        Icons.sync,
+        color: color,
+        size: size,
+      ),
+      builder: (context, child) {
+        return Transform.rotate(
+          angle: _statusSpinController.value * 2 * math.pi,
+          child: child,
+        );
+      },
     );
   }
 
