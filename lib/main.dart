@@ -415,9 +415,11 @@ class _ProcessingPageState extends State<ProcessingPage>
       for (final row in conexaRows) {
         final cnpjDigits = digitsOnly(row.cpfCnpj);
         final localiza = localizaMap[cnpjDigits];
-
-        final regraCobranca =
-            (localiza?.parceiro.trim().isNotEmpty ?? false) ? '3' : '7';
+        final isWhiteLabel = _isWhiteLabel(localiza?.modalidade ?? '');
+        final regraCobranca = isWhiteLabel ? '7' : '3';
+        final cobrar = _mustChargeToday(row.vencimento, int.parse(regraCobranca))
+            ? 'Sim'
+            : 'Não';
 
         final ticketId = await _fetchMovideskTicketId(
           formattedCnpj(cnpjDigits),
@@ -436,7 +438,8 @@ class _ProcessingPageState extends State<ProcessingPage>
               ? ''
               : 'https://suporte.conciliadora.com.br/Ticket/Edit/$ticketId',
           grupo: localiza?.grupo ?? '',
-          parceiro: localiza?.parceiro ?? '',
+          modalidade: localiza?.modalidade ?? '',
+          cobrar: cobrar,
         );
 
         if (!mounted) return;
@@ -540,6 +543,20 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
   }
 
+  bool _isWhiteLabel(String modalidade) {
+    return normalizeKey(modalidade).contains('whitelabel');
+  }
+
+  bool _mustChargeToday(String vencimento, int graceDays) {
+    final dueDate = _parseFlexibleDate(vencimento);
+    if (dueDate == null) return false;
+    final limitDate = dueDate.add(Duration(days: graceDays));
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final limitOnly = DateTime(limitDate.year, limitDate.month, limitDate.day);
+    return !limitOnly.isBefore(todayOnly);
+  }
+
   // ---------------------------------------------------------------------------
   // Export CSV
   // ---------------------------------------------------------------------------
@@ -564,6 +581,8 @@ class _ProcessingPageState extends State<ProcessingPage>
       'Vencimento',
       'Pagamento regra',
       'Grupo',
+      'Modalidade',
+      'Cobrar',
       'Ticket',
       'Ticket URL',
     ].map(escape).join(';'));
@@ -577,6 +596,8 @@ class _ProcessingPageState extends State<ProcessingPage>
         row.vencimento,
         row.prazoCobranca,
         row.grupo,
+        row.modalidade,
+        row.cobrar,
         row.ticketId,
         row.ticketMovideskUrl,
       ].map(escape).join(';'));
@@ -801,7 +822,7 @@ class _ProcessingPageState extends State<ProcessingPage>
             stepNumber: 1,
             icon: Icons.table_view_outlined,
             title: 'Base Localiza',
-            description: 'Planilha com CNPJs, Grupo e Parceiro.',
+            description: 'Planilha com CNPJ/CPF, Grupo e Modalidade.',
             status: _localizaStatus,
             filename: _localizaName,
             count: _localizaRows?.length,
@@ -1564,6 +1585,8 @@ class _ProcessingPageState extends State<ProcessingPage>
               DataColumn(label: Text('VENCIMENTO')),
               DataColumn(label: Text('REGRA')),
               DataColumn(label: Text('GRUPO')),
+              DataColumn(label: Text('MODALIDADE')),
+              DataColumn(label: Text('COBRAR')),
               DataColumn(label: Text('TICKET')),
             ],
             rows: List.generate(pageRows.length, (index) {
@@ -1630,6 +1653,18 @@ class _ProcessingPageState extends State<ProcessingPage>
                   )),
                   DataCell(_RegraBadge(value: row.prazoCobranca)),
                   DataCell(_GrupoChip(value: row.grupo)),
+                  DataCell(Text(row.modalidade)),
+                  DataCell(
+                    Text(
+                      row.cobrar,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: row.cobrar == 'Sim'
+                            ? AppColors.success
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                   DataCell(_TicketCell(
                     ticketId: row.ticketId,
                     url: row.ticketMovideskUrl,
@@ -2008,15 +2043,13 @@ class _PageIconButton extends StatelessWidget {
 class LocalizaRow {
   LocalizaRow({
     required this.cnpj,
-    required this.razaoSocial,
     required this.grupo,
-    required this.parceiro,
+    required this.modalidade,
   });
 
   final String cnpj;
-  final String razaoSocial;
   final String grupo;
-  final String parceiro;
+  final String modalidade;
 }
 
 class ConexaRow {
@@ -2046,7 +2079,8 @@ class OutputRow {
     required this.ticketId,
     required this.ticketMovideskUrl,
     required this.grupo,
-    required this.parceiro,
+    required this.modalidade,
+    required this.cobrar,
   });
 
   final String idCobranca;
@@ -2058,7 +2092,8 @@ class OutputRow {
   final String ticketId;
   final String ticketMovideskUrl;
   final String grupo;
-  final String parceiro;
+  final String modalidade;
+  final String cobrar;
 }
 
 class ProcessingException implements Exception {
@@ -2072,6 +2107,31 @@ class ProcessingException implements Exception {
 // =============================================================================
 
 String digitsOnly(String input) => input.replaceAll(RegExp(r'\D'), '');
+
+DateTime? _parseFlexibleDate(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return null;
+
+  final iso = DateTime.tryParse(text);
+  if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+
+  final brMatch = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(text);
+  if (brMatch != null) {
+    final day = int.parse(brMatch.group(1)!);
+    final month = int.parse(brMatch.group(2)!);
+    final year = int.parse(brMatch.group(3)!);
+    return DateTime(year, month, day);
+  }
+
+  final serial = double.tryParse(text.replaceAll(',', '.'));
+  if (serial != null) {
+    final excelEpoch = DateTime(1899, 12, 30);
+    final parsed = excelEpoch.add(Duration(days: serial.floor()));
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  return null;
+}
 
 String formattedCnpj(String digits) {
   if (digits.length != 14) {
@@ -2121,17 +2181,13 @@ Future<Map<String, LocalizaRow>> parseLocalizaBytes(
   }
 
   final header = _headerMap(table.rows.first);
-  final cnpjCol = _findColumn(header, ['CNPJ', 'cpfcnpj']);
-  final razaoCol = _findColumn(header, ['Razão Social', 'nomerazaosocial']);
+  final cnpjCol = _findColumn(header, ['CNPJ', 'CNPJ/CPF', 'cpfcnpj']);
   final grupoCol = _findColumn(header, ['Grupo']);
-  final parceiroCol = _findColumn(header, ['Parceiro', 'parceirocomercial']);
+  final modalidadeCol = _findColumn(header, ['Modalidade']);
 
-  if (cnpjCol == null ||
-      razaoCol == null ||
-      grupoCol == null ||
-      parceiroCol == null) {
+  if (cnpjCol == null || grupoCol == null || modalidadeCol == null) {
     throw const ProcessingException(
-      'A planilha Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
+      'A planilha Localiza precisa conter colunas de CNPJ/CPF, Grupo e Modalidade.',
     );
   }
 
@@ -2153,9 +2209,8 @@ Future<Map<String, LocalizaRow>> parseLocalizaBytes(
         cnpj,
         () => LocalizaRow(
           cnpj: cnpj,
-          razaoSocial: _cellValue(row, razaoCol),
           grupo: _cellValue(row, grupoCol),
-          parceiro: _cellValue(row, parceiroCol),
+          modalidade: _cellValue(row, modalidadeCol),
         ),
       );
     } catch (_) {
@@ -2355,18 +2410,13 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
   }
 
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
-  final cnpjCol = _csvFindColumn(header, ['CNPJ', 'cpfcnpj']);
-  final razaoCol = _csvFindColumn(header, ['Razão Social', 'nomerazaosocial']);
+  final cnpjCol = _csvFindColumn(header, ['CNPJ', 'CNPJ/CPF', 'cpfcnpj']);
   final grupoCol = _csvFindColumn(header, ['Grupo']);
-  final parceiroCol =
-      _csvFindColumn(header, ['Parceiro', 'parceirocomercial']);
+  final modalidadeCol = _csvFindColumn(header, ['Modalidade']);
 
-  if (cnpjCol == null ||
-      razaoCol == null ||
-      grupoCol == null ||
-      parceiroCol == null) {
+  if (cnpjCol == null || grupoCol == null || modalidadeCol == null) {
     throw const ProcessingException(
-      'O CSV do Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
+      'O CSV do Localiza precisa conter colunas de CNPJ/CPF, Grupo e Modalidade.',
     );
   }
 
@@ -2389,9 +2439,8 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
         cnpj,
         () => LocalizaRow(
           cnpj: cnpj,
-          razaoSocial: _csvField(row, razaoCol),
           grupo: _csvField(row, grupoCol),
-          parceiro: _csvField(row, parceiroCol),
+          modalidade: _csvField(row, modalidadeCol),
         ),
       );
     } catch (_) {
