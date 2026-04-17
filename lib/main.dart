@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'package:http/http.dart' as http;
 import 'dart:html' as html;
 
@@ -13,7 +15,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const ConexaApp());
 }
 
