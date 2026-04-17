@@ -1434,7 +1434,28 @@ class _ProcessingPageState extends State<ProcessingPage>
 
     final filteredRows = _filteredResultRows;
     if (filteredRows.isEmpty) {
-      return _buildFilteredEmptyState();
+      return Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0F172A),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildResultsHeader(),
+            const Divider(height: 1, color: AppColors.borderLight),
+            _buildFilteredEmptyState(),
+          ],
+        ),
+      );
     }
 
     final totalPages = ((filteredRows.length - 1) ~/ _pageSize) + 1;
@@ -1865,11 +1886,6 @@ class _ProcessingPageState extends State<ProcessingPage>
 
   Widget _buildFilteredEmptyState() {
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border, style: BorderStyle.solid),
-      ),
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
       child: Column(
         children: [
