@@ -218,11 +218,23 @@ class _ProcessingPageState extends State<ProcessingPage>
 
   List<OutputRow> get _filteredResultRows {
     final filterDigits = digitsOnly(_cnpjFilter);
-    if (filterDigits.isEmpty) return _resultRows;
-    return _resultRows.where((row) {
-      final rowDigits = digitsOnly(row.cpfCnpj);
-      return rowDigits.contains(filterDigits);
-    }).toList();
+    final rows = filterDigits.isEmpty
+        ? _resultRows.toList()
+        : _resultRows.where((row) {
+            final rowDigits = digitsOnly(row.cpfCnpj);
+            return rowDigits.contains(filterDigits);
+          }).toList();
+
+    rows.sort((a, b) {
+      final aDate = _parseFlexibleDate(a.vencimento);
+      final bDate = _parseFlexibleDate(b.vencimento);
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      return aDate.compareTo(bDate);
+    });
+
+    return rows;
   }
 
   void _syncStatusAnimations() {
