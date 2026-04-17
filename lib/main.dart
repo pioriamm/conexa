@@ -179,6 +179,8 @@ class _ProcessingPageState extends State<ProcessingPage>
   int _conexaTotal = 0;
   bool _loading = false;
   String _status = '';
+  final TextEditingController _cnpjFilterController = TextEditingController();
+  String _cnpjFilter = '';
   bool _hasError = false;
   DateTime? _processStart;
   Duration _processElapsed = Duration.zero;
@@ -207,9 +209,19 @@ class _ProcessingPageState extends State<ProcessingPage>
   @override
   void dispose() {
     _processTimer?.cancel();
+    _cnpjFilterController.dispose();
     _statusFadeController.dispose();
     _statusSpinController.dispose();
     super.dispose();
+  }
+
+  List<OutputRow> get _filteredResultRows {
+    final filterDigits = digitsOnly(_cnpjFilter);
+    if (filterDigits.isEmpty) return _resultRows;
+    return _resultRows.where((row) {
+      final rowDigits = digitsOnly(row.cpfCnpj);
+      return rowDigits.contains(filterDigits);
+    }).toList();
   }
 
   void _syncStatusAnimations() {
@@ -1326,13 +1338,18 @@ class _ProcessingPageState extends State<ProcessingPage>
       return _buildEmptyState();
     }
 
-    final totalPages = ((_resultRows.length - 1) ~/ _pageSize) + 1;
+    final filteredRows = _filteredResultRows;
+    if (filteredRows.isEmpty) {
+      return _buildFilteredEmptyState();
+    }
+
+    final totalPages = ((filteredRows.length - 1) ~/ _pageSize) + 1;
     final safePage = _currentPage.clamp(0, totalPages - 1);
     final startIdx = safePage * _pageSize;
-    final endIdx = (startIdx + _pageSize) > _resultRows.length
-        ? _resultRows.length
+    final endIdx = (startIdx + _pageSize) > filteredRows.length
+        ? filteredRows.length
         : startIdx + _pageSize;
-    final pageRows = _resultRows.sublist(startIdx, endIdx);
+    final pageRows = filteredRows.sublist(startIdx, endIdx);
 
     return Container(
       decoration: BoxDecoration(
@@ -1355,6 +1372,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           _buildResultsTable(pageRows),
           const Divider(height: 1, color: AppColors.borderLight),
           _buildResultsFooter(
+            totalCount: filteredRows.length,
             totalPages: totalPages,
             safePage: safePage,
             startIdx: startIdx,
@@ -1416,6 +1434,9 @@ class _ProcessingPageState extends State<ProcessingPage>
   }
 
   Widget _buildResultsHeader() {
+    final filteredCount = _filteredResultRows.length;
+    final hasFilter = digitsOnly(_cnpjFilter).isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
       child: Row(
@@ -1439,7 +1460,9 @@ class _ProcessingPageState extends State<ProcessingPage>
               border: Border.all(color: AppColors.borderLight),
             ),
             child: Text(
-              '${_formatInt(_resultRows.length)} registros',
+              hasFilter
+                  ? '${_formatInt(filteredCount)} de ${_formatInt(_resultRows.length)} registros'
+                  : '${_formatInt(_resultRows.length)} registros',
               style: const TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 12,
@@ -1450,6 +1473,52 @@ class _ProcessingPageState extends State<ProcessingPage>
             ),
           ),
           const Spacer(),
+          SizedBox(
+            width: 280,
+            child: TextField(
+              controller: _cnpjFilterController,
+              onChanged: (value) {
+                setState(() {
+                  _cnpjFilter = value;
+                  _currentPage = 0;
+                });
+              },
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Pesquisar CNPJ',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _cnpjFilter.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Limpar pesquisa',
+                        onPressed: () {
+                          _cnpjFilterController.clear();
+                          setState(() {
+                            _cnpjFilter = '';
+                            _currentPage = 0;
+                          });
+                        },
+                        icon: const Icon(Icons.clear, size: 18),
+                      )
+                    : null,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AppColors.primary),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
           ElevatedButton.icon(
             onPressed: _loading ? null : _exportCsv,
             icon: const Icon(Icons.file_download_outlined, size: 16),
@@ -1595,6 +1664,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   }
 
   Widget _buildResultsFooter({
+    required int totalCount,
     required int totalPages,
     required int safePage,
     required int startIdx,
@@ -1605,7 +1675,7 @@ class _ProcessingPageState extends State<ProcessingPage>
       child: Row(
         children: [
           Text(
-            'Mostrando ${startIdx + 1}–$endIdx de ${_formatInt(_resultRows.length)}',
+            'Mostrando ${startIdx + 1}–$endIdx de ${_formatInt(totalCount)}',
             style: const TextStyle(
               fontFamily: 'Inter',
               fontSize: 12,
@@ -1660,6 +1730,43 @@ class _ProcessingPageState extends State<ProcessingPage>
             onPressed: safePage < totalPages - 1
                 ? () => setState(() => _currentPage = totalPages - 1)
                 : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilteredEmptyState() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
+      child: Column(
+        children: [
+          const Icon(Icons.search_off, size: 30, color: AppColors.textMuted),
+          const SizedBox(height: 12),
+          const Text(
+            'Nenhum CNPJ encontrado',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Ajuste o número digitado no campo de pesquisa para ver os resultados.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
           ),
         ],
       ),
