@@ -416,13 +416,12 @@ class _ProcessingPageState extends State<ProcessingPage>
       for (final row in conexaRows) {
         final cnpjDigits = digitsOnly(row.cpfCnpj);
         final localiza = localizaMap[cnpjDigits];
-        final isWhiteLabel = _isWhiteLabel(localiza?.modalidade ?? '');
+        final modalidade = _resolveModalidade(localiza?.modalidade);
+        final isWhiteLabel = _isWhiteLabel(modalidade);
         final regraCobranca = isWhiteLabel ? '7' : '3';
         final regraDias = int.parse(regraCobranca);
         final dataCobrancaDate = _buildChargeDate(row.vencimento, regraDias);
-        final cobrar = _shouldPerformCharge(dataCobrancaDate)
-            ? 'Realizar cobrança'
-            : 'No prazo';
+        final cobrar = _buildChargeLabel(dataCobrancaDate);
 
         int? ticketId;
         try {
@@ -447,7 +446,7 @@ class _ProcessingPageState extends State<ProcessingPage>
               ? ''
               : 'https://suporte.conciliadora.com.br/Ticket/Edit/$ticketId',
           grupo: localiza?.grupo ?? '',
-          modalidade: localiza?.modalidade ?? '',
+          modalidade: modalidade,
           cobrar: cobrar,
         );
 
@@ -581,6 +580,28 @@ class _ProcessingPageState extends State<ProcessingPage>
       chargeDate.day,
     );
     return chargeDateOnly.isBefore(todayOnly);
+  }
+
+  bool _isToday(DateTime? date) {
+    if (date == null) return false;
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    return dateOnly == todayOnly;
+  }
+
+  String _buildChargeLabel(DateTime? chargeDate) {
+    if (_shouldPerformCharge(chargeDate)) return 'Realizar cobrança';
+    if (_isToday(chargeDate)) return 'Vence hoje';
+    return 'No prazo';
+  }
+
+  String _resolveModalidade(String? modalidade) {
+    final value = modalidade?.trim() ?? '';
+    if (value.isEmpty) {
+      return 'CLIENTE FINAL';
+    }
+    return value.toUpperCase();
   }
 
   // ---------------------------------------------------------------------------
@@ -1680,17 +1701,27 @@ class _ProcessingPageState extends State<ProcessingPage>
                     DataCell(
                       Text(
                         row.dataCobranca,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'JetBrains Mono',
                           fontSize: 13,
-                          color: AppColors.textSecondary,
+                          color: row.cobrar == 'Vence hoje'
+                              ? AppColors.warning
+                              : AppColors.textSecondary,
                           fontFeatures: [FontFeature.tabularFigures()],
                         ),
                       ),
                     ),
                     DataCell(_CobrarBadge(value: row.cobrar)),
                     DataCell(_GrupoChip(value: row.grupo)),
-                    DataCell(Text(row.modalidade)),
+                    DataCell(Text(
+                      row.modalidade,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    )),
                     DataCell(_TicketCell(
                       ticketId: row.ticketId,
                       url: row.ticketMovideskUrl,
@@ -1983,9 +2014,19 @@ class _CobrarBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shouldCharge = value.trim().toLowerCase() == 'realizar cobrança';
-    final fg = shouldCharge ? AppColors.danger : AppColors.successStrong;
-    final bg = shouldCharge ? AppColors.dangerSoft : AppColors.successSoft;
+    final normalized = value.trim().toLowerCase();
+    final shouldCharge = normalized == 'realizar cobrança';
+    final dueToday = normalized == 'vence hoje';
+    final fg = shouldCharge
+        ? AppColors.danger
+        : dueToday
+            ? AppColors.warning
+            : AppColors.successStrong;
+    final bg = shouldCharge
+        ? AppColors.dangerSoft
+        : dueToday
+            ? AppColors.warningSoft
+            : AppColors.successSoft;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
