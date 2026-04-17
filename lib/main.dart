@@ -1,16 +1,56 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'dart:html' as html;
 
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const ConexaApp());
+}
+
+// =============================================================================
+// Design system
+// =============================================================================
+
+class AppColors {
+  // Brand palette (Cores)
+  static const verdeEscuro = Color(0xFF103339);
+  static const verdeClaro = Color(0xFF87B526);
+  static const verdeClaroW50 = Color(0xFFABF117);
+  static const verdeClaroW40 = Color(0xFFC2D500);
+  static const verdeClaroW100 = Color(0xFFE5F3D2);
+  static const branco = Color(0xFFFBFBFC);
+  static const cinza = Color(0xFFBDBDC8);
+  static const verdeCnpjja = Color(0xFF1A2B35);
+  static const vermelho = Color(0xFFF40202);
+  static const amarelo = Color(0xFF352E17);
+
+  // Semantic aliases used across the UI
+  static const bg = Color(0xFFF4F6F2);
+  static const surface = branco;
+  static const surfaceAlt = Color(0xFFF1F4EC);
+  static const border = Color(0xFFDCE0D8);
+  static const borderLight = Color(0xFFEAEDE6);
+  static const textPrimary = verdeCnpjja;
+  static const textSecondary = Color(0xFF5A6770);
+  static const textMuted = cinza;
+  static const primary = verdeEscuro;
+  static const primaryHover = Color(0xFF184049);
+  static const primarySoft = verdeClaroW100;
+  static const success = verdeClaro;
+  static const successSoft = verdeClaroW100;
+  static const warning = Color(0xFFC2861A);
+  static const warningSoft = Color(0xFFFEF3C7);
+  static const danger = vermelho;
+  static const dangerSoft = Color(0xFFFCE6E6);
+  static const neutralSoft = Color(0xFFF1F3EE);
 }
 
 class ConexaApp extends StatelessWidget {
@@ -18,17 +58,104 @@ class ConexaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        primary: AppColors.primary,
+        surface: AppColors.surface,
+        background: AppColors.bg,
+      ),
+      scaffoldBackgroundColor: AppColors.bg,
+      fontFamily: 'Inter',
+    );
+
     return MaterialApp(
-      title: 'Conexa Cobrança',
+      title: 'Conexa — Consolidador de Cobrança',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
+      theme: base.copyWith(
+        textTheme: base.textTheme
+            .apply(
+              bodyColor: AppColors.textPrimary,
+              displayColor: AppColors.textPrimary,
+              fontFamily: 'Inter',
+            )
+            .copyWith(
+              headlineSmall: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.2,
+              ),
+              titleMedium: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              bodyMedium: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                color: AppColors.textPrimary,
+                height: 1.45,
+              ),
+              bodySmall: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+              labelLarge: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+              ),
+            ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.surface,
+            foregroundColor: AppColors.textPrimary,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
       ),
       home: const ProcessingPage(),
     );
   }
 }
+
+enum StepStatus { pendente, carregando, pronto, processando }
+
+// =============================================================================
+// Processing page
+// =============================================================================
 
 class ProcessingPage extends StatefulWidget {
   const ProcessingPage({super.key});
@@ -50,6 +177,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
   int _conexaTotal = 0;
   bool _loading = false;
   String _status = '';
+  bool _hasError = false;
   DateTime? _processStart;
   Duration _processElapsed = Duration.zero;
   Timer? _processTimer;
@@ -78,6 +206,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
         _loadingLocaliza = true;
         _localizaCurrent = 0;
         _localizaTotal = 0;
+        _hasError = false;
         _status = 'Carregando arquivo Localiza...';
       });
     } else {
@@ -85,6 +214,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
         _loadingConexa = true;
         _conexaCurrent = 0;
         _conexaTotal = 0;
+        _hasError = false;
         _status = 'Carregando arquivo Conexa...';
       });
     }
@@ -99,7 +229,6 @@ class _ProcessingPageState extends State<ProcessingPage> {
       setState(() {
         _loadingLocaliza = false;
         _loadingConexa = false;
-        _status = 'Seleção cancelada.';
       });
       return;
     }
@@ -109,6 +238,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
       setState(() {
         _loadingLocaliza = false;
         _loadingConexa = false;
+        _hasError = true;
         _status = 'Não foi possível ler o arquivo selecionado.';
       });
       return;
@@ -121,25 +251,25 @@ class _ProcessingPageState extends State<ProcessingPage> {
       if (isLocaliza) {
         final parsed = isCsv
             ? await parseLocalizaCsvBytes(
-          file.bytes!,
-          onProgress: (current, total) {
-            if (!mounted) return;
-            setState(() {
-              _localizaCurrent = current;
-              _localizaTotal = total;
-            });
-          },
-        )
+                file.bytes!,
+                onProgress: (current, total) {
+                  if (!mounted) return;
+                  setState(() {
+                    _localizaCurrent = current;
+                    _localizaTotal = total;
+                  });
+                },
+              )
             : await parseLocalizaBytes(
-          file.bytes!,
-          onProgress: (current, total) {
-            if (!mounted) return;
-            setState(() {
-              _localizaCurrent = current;
-              _localizaTotal = total;
-            });
-          },
-        );
+                file.bytes!,
+                onProgress: (current, total) {
+                  if (!mounted) return;
+                  setState(() {
+                    _localizaCurrent = current;
+                    _localizaTotal = total;
+                  });
+                },
+              );
         if (!mounted) return;
         setState(() {
           _localizaName = file.name;
@@ -147,42 +277,43 @@ class _ProcessingPageState extends State<ProcessingPage> {
           _conexaName = null;
           _conexaRows = null;
           _loadingLocaliza = false;
-          _status = 'Arquivo Localiza carregado com sucesso.';
+          _status = '';
         });
       } else {
         final parsed = isCsv
             ? await parseConexaCsvBytes(
-          file.bytes!,
-          onProgress: (current, total) {
-            if (!mounted) return;
-            setState(() {
-              _conexaCurrent = current;
-              _conexaTotal = total;
-            });
-          },
-        )
+                file.bytes!,
+                onProgress: (current, total) {
+                  if (!mounted) return;
+                  setState(() {
+                    _conexaCurrent = current;
+                    _conexaTotal = total;
+                  });
+                },
+              )
             : await parseConexaBytes(
-          file.bytes!,
-          onProgress: (current, total) {
-            if (!mounted) return;
-            setState(() {
-              _conexaCurrent = current;
-              _conexaTotal = total;
-            });
-          },
-        );
+                file.bytes!,
+                onProgress: (current, total) {
+                  if (!mounted) return;
+                  setState(() {
+                    _conexaCurrent = current;
+                    _conexaTotal = total;
+                  });
+                },
+              );
         if (!mounted) return;
         setState(() {
           _conexaName = file.name;
           _conexaRows = parsed;
           _loadingConexa = false;
-          _status = 'Arquivo Conexa carregado com sucesso.';
+          _status = '';
         });
       }
     } on ProcessingException catch (e) {
       setState(() {
         _loadingLocaliza = false;
         _loadingConexa = false;
+        _hasError = true;
         _status = e.message;
       });
     } catch (e, s) {
@@ -191,6 +322,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
       setState(() {
         _loadingLocaliza = false;
         _loadingConexa = false;
+        _hasError = true;
         _status = 'Erro ao ler a planilha. Verifique formato e conteúdo.';
       });
     }
@@ -199,7 +331,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
   Future<void> _process() async {
     if (_localizaRows == null || _conexaRows == null) {
       setState(() {
-        _status = 'Envie e carregue as duas planilhas antes de processar.';
+        _hasError = true;
+        _status = 'Envie as duas planilhas antes de processar.';
       });
       return;
     }
@@ -216,7 +349,8 @@ class _ProcessingPageState extends State<ProcessingPage> {
 
     setState(() {
       _loading = true;
-      _status = 'Processando planilhas...';
+      _hasError = false;
+      _status = '';
       _resultRows = [];
       _currentPage = 0;
     });
@@ -230,7 +364,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
         final localiza = localizaMap[cnpjDigits];
 
         final regraCobranca =
-        (localiza?.parceiro.trim().isNotEmpty ?? false) ? '3' : '7';
+            (localiza?.parceiro.trim().isNotEmpty ?? false) ? '3' : '7';
 
         final ticketId = await _fetchMovideskTicketId(
           formattedCnpj(cnpjDigits),
@@ -255,24 +389,23 @@ class _ProcessingPageState extends State<ProcessingPage> {
         if (!mounted) return;
         setState(() {
           _resultRows = [..._resultRows, output];
-          _status =
-          'Processando ${_resultRows.length} de ${conexaRows.length}...';
         });
       }
 
       if (!mounted) return;
       setState(() {
-        _status =
-        'Processamento concluído. ${_resultRows.length} registros processados.';
+        _status = '';
       });
     } on ProcessingException catch (e) {
       setState(() {
+        _hasError = true;
         _status = e.message;
       });
     } catch (e) {
       setState(() {
+        _hasError = true;
         _status =
-        'Ocorreu um erro inesperado ao processar os arquivos. Verifique se as planilhas estão no layout correto e tente novamente.';
+            'Ocorreu um erro inesperado ao processar os arquivos. Verifique se as planilhas estão no layout correto e tente novamente.';
       });
     } finally {
       _processTimer?.cancel();
@@ -355,241 +488,1333 @@ class _ProcessingPageState extends State<ProcessingPage> {
   }
 
   // ---------------------------------------------------------------------------
+  // Export CSV
+  // ---------------------------------------------------------------------------
+
+  void _exportCsv() {
+    if (_resultRows.isEmpty) return;
+
+    String escape(String s) {
+      if (s.contains('"') || s.contains(';') || s.contains('\n')) {
+        final escaped = s.replaceAll('"', '""');
+        return '"$escaped"';
+      }
+      return s;
+    }
+
+    final buf = StringBuffer();
+    buf.writeln([
+      'ID da Cobrança',
+      'CPF/CNPJ',
+      'Razão Social Cliente',
+      'Valor',
+      'Vencimento',
+      'Pagamento regra',
+      'Grupo',
+      'Ticket',
+      'Ticket URL',
+    ].map(escape).join(';'));
+
+    for (final row in _resultRows) {
+      buf.writeln([
+        row.idCobranca,
+        row.cpfCnpj,
+        row.razaoSocialCliente,
+        row.valor,
+        row.vencimento,
+        row.prazoCobranca,
+        row.grupo,
+        row.ticketId,
+        row.ticketMovideskUrl,
+      ].map(escape).join(';'));
+    }
+
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(buf.toString())];
+    final blob = html.Blob([Uint8List.fromList(bytes)], 'text/csv');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute('download', 'conexa_resultado.csv')
+      ..style.display = 'none';
+    html.document.body?.children.add(anchor);
+    anchor.click();
+    anchor.remove();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step helpers
+  // ---------------------------------------------------------------------------
+
+  StepStatus get _localizaStatus {
+    if (_loadingLocaliza) return StepStatus.carregando;
+    if (_localizaRows != null) return StepStatus.pronto;
+    return StepStatus.pendente;
+  }
+
+  StepStatus get _conexaStatus {
+    if (_loadingConexa) return StepStatus.carregando;
+    if (_conexaRows != null) return StepStatus.pronto;
+    return StepStatus.pendente;
+  }
+
+  StepStatus get _processStatus {
+    if (_loading) return StepStatus.processando;
+    if (_resultRows.isNotEmpty && !_loading) return StepStatus.pronto;
+    return StepStatus.pendente;
+  }
+
+  // ---------------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Conexa - Consolidador de Cobrança')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '1) Envie a planilha Localiza Estabelecimento (.xlsx ou .csv)\n'
-                  '2) Envie a planilha Conexa (.xlsx ou .csv)\n'
-                  '3) Clique em Processar\n\n'
-                  'Dica: para bases grandes (>50 mil linhas), salve a planilha '
-                  'como CSV no Excel ("Salvar como → CSV UTF-8") — o upload '
-                  'fica muito mais rápido.',
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed:
-                      (_loading || _loadingLocaliza || _loadingConexa)
-                          ? null
-                          : () => _pickFile(true),
-                      icon: _loadingLocaliza
-                          ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.upload_file),
-                      label: const Text('Upload Localiza'),
-                    ),
-                    if (_loadingLocaliza && _localizaTotal > 0) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        '${_localizaTotal - _localizaCurrent} restantes',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ],
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: (_loading ||
-                          _loadingLocaliza ||
-                          _loadingConexa ||
-                          _localizaRows == null)
-                          ? null
-                          : () => _pickFile(false),
-                      icon: _loadingConexa
-                          ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.upload_file),
-                      label: const Text('Upload Conexa'),
-                    ),
-                    if (_loadingConexa && _conexaTotal > 0) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        '${_conexaTotal - _conexaCurrent} restantes',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ],
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: (_loading ||
-                          _loadingLocaliza ||
-                          _loadingConexa ||
-                          _localizaRows == null ||
-                          _conexaRows == null)
-                          ? null
-                          : _process,
-                      icon: _loading
-                          ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.play_arrow),
-                      label: const Text('Processar'),
-                    ),
-                    if (_loading && _conexaRows != null) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        '${_conexaRows!.length - _resultRows.length} restantes',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                    if (_loading || _processElapsed > Duration.zero) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        _formatDuration(_processElapsed),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_resultRows.isNotEmpty) ...[
-              Builder(builder: (context) {
-                final totalPages =
-                    ((_resultRows.length - 1) ~/ _pageSize) + 1;
-                final safePage =
-                _currentPage.clamp(0, totalPages - 1);
-                final startIdx = safePage * _pageSize;
-                final endIdx = (startIdx + _pageSize) > _resultRows.length
-                    ? _resultRows.length
-                    : startIdx + _pageSize;
-                final pageRows = _resultRows.sublist(startIdx, endIdx);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('ID da Cobrança')),
-                          DataColumn(label: Text('CPF/CNPJ')),
-                          DataColumn(label: Text('Razão Social Cliente')),
-                          DataColumn(label: Text('Valor')),
-                          DataColumn(label: Text('Vencimento')),
-                          DataColumn(label: Text('Pagamento regra')),
-                          DataColumn(label: Text('Grupo')),
-                          DataColumn(label: Text('Ticket')),
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 48),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildIntro(),
+                          const SizedBox(height: 24),
+                          _buildStepCards(),
+                          const SizedBox(height: 24),
+                          _buildStatusBar(),
+                          if (_hasError && _status.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _buildErrorBanner(),
+                          ],
+                          const SizedBox(height: 24),
+                          _buildResultsCard(),
                         ],
-                        rows: pageRows.map((row) {
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(row.idCobranca)),
-                        DataCell(Text(row.cpfCnpj)),
-                        DataCell(Text(row.razaoSocialCliente)),
-                        DataCell(Text(row.valor)),
-                        DataCell(Text(row.vencimento)),
-                        DataCell(Text(row.prazoCobranca)),
-                        DataCell(Text(row.grupo)),
-                        DataCell(
-                          row.ticketId.isEmpty
-                              ? const Text('-')
-                              : InkWell(
-                            onTap: () async {
-                              final uri =
-                              Uri.parse(row.ticketMovideskUrl);
-                              await launchUrl(uri);
-                            },
-                            child: Text(
-                              row.ticketId,
-                              style: const TextStyle(
-                                color: Colors.blue,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'Primeira página',
-                          onPressed: safePage > 0
-                              ? () => setState(() => _currentPage = 0)
-                              : null,
-                          icon: const Icon(Icons.first_page),
-                        ),
-                        IconButton(
-                          tooltip: 'Página anterior',
-                          onPressed: safePage > 0
-                              ? () => setState(() =>
-                          _currentPage = safePage - 1)
-                              : null,
-                          icon: const Icon(Icons.chevron_left),
-                        ),
-                        Padding(
-                          padding:
-                          const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            'Página ${safePage + 1} de $totalPages '
-                                '(${startIdx + 1}–$endIdx de ${_resultRows.length})',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w500,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 1),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.hub_outlined,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Conexa',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.2,
+                      height: 1.1,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Consolidador de Cobrança',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              _buildTopBadge(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBadge() {
+    final ready = _localizaRows != null && _conexaRows != null;
+    final label = ready ? 'Pronto para processar' : 'Aguardando arquivos';
+    final color = ready ? AppColors.success : AppColors.textMuted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIntro() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const [
+        Text(
+          'Consolide cobranças e tickets em minutos',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.4,
+            height: 1.2,
+          ),
+        ),
+        SizedBox(height: 6),
+        Text(
+          'Envie a base Localiza, envie a planilha Conexa e processe — '
+          'os tickets do Movidesk são consultados automaticamente.',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 14,
+            color: AppColors.textSecondary,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepCards() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 820;
+        final children = [
+          _buildStepCard(
+            stepNumber: 1,
+            icon: Icons.table_view_outlined,
+            title: 'Base Localiza',
+            description: 'Planilha com CNPJs, Grupo e Parceiro.',
+            status: _localizaStatus,
+            filename: _localizaName,
+            count: _localizaRows?.length,
+            current: _localizaCurrent,
+            total: _localizaTotal,
+            buttonLabel: _localizaName == null
+                ? 'Selecionar arquivo'
+                : 'Trocar arquivo',
+            onPressed: (_loading || _loadingLocaliza || _loadingConexa)
+                ? null
+                : () => _pickFile(true),
+          ),
+          _buildStepCard(
+            stepNumber: 2,
+            icon: Icons.receipt_long_outlined,
+            title: 'Planilha Conexa',
+            description: 'Lista de cobranças a consolidar.',
+            status: _conexaStatus,
+            filename: _conexaName,
+            count: _conexaRows?.length,
+            current: _conexaCurrent,
+            total: _conexaTotal,
+            buttonLabel: _conexaName == null
+                ? 'Selecionar arquivo'
+                : 'Trocar arquivo',
+            onPressed: (_loading ||
+                    _loadingLocaliza ||
+                    _loadingConexa ||
+                    _localizaRows == null)
+                ? null
+                : () => _pickFile(false),
+            disabledHint:
+                _localizaRows == null ? 'Envie a base Localiza primeiro.' : null,
+          ),
+          _buildStepCard(
+            stepNumber: 3,
+            icon: Icons.auto_awesome_outlined,
+            title: 'Processar',
+            description: 'Consulta Movidesk e gera o resultado.',
+            status: _processStatus,
+            filename: null,
+            count: _resultRows.isEmpty ? null : _resultRows.length,
+            current: _resultRows.length,
+            total: _conexaRows?.length ?? 0,
+            buttonLabel: _resultRows.isEmpty ? 'Processar' : 'Processar novamente',
+            primary: true,
+            onPressed: (_loading ||
+                    _loadingLocaliza ||
+                    _loadingConexa ||
+                    _localizaRows == null ||
+                    _conexaRows == null)
+                ? null
+                : _process,
+            disabledHint: (_localizaRows == null || _conexaRows == null)
+                ? 'Envie as duas planilhas para habilitar.'
+                : null,
+          ),
+        ];
+
+        if (isNarrow) {
+          return Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                children[i],
+                if (i < children.length - 1) const SizedBox(height: 16),
+              ],
+            ],
+          );
+        }
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                Expanded(child: children[i]),
+                if (i < children.length - 1) const SizedBox(width: 16),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStepCard({
+    required int stepNumber,
+    required IconData icon,
+    required String title,
+    required String description,
+    required StepStatus status,
+    required String? filename,
+    required int? count,
+    required int current,
+    required int total,
+    required String buttonLabel,
+    required VoidCallback? onPressed,
+    String? disabledHint,
+    bool primary = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: AppColors.primary, size: 18),
+              ),
+              const Spacer(),
+              _StatusBadge(status: status),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                'Passo $stepNumber',
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.1,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _buildStepBody(
+            status: status,
+            filename: filename,
+            count: count,
+            current: current,
+            total: total,
+            disabledHint: disabledHint,
+            enabled: onPressed != null,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: primary
+                ? FilledButton.icon(
+                    onPressed: onPressed,
+                    icon: status == StepStatus.processando
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
+                          )
+                        : const Icon(Icons.play_arrow, size: 18),
+                    label: Text(buttonLabel),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: onPressed,
+                    icon: status == StepStatus.carregando
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.primary),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.upload_file_outlined,
+                            size: 18,
+                            color: AppColors.textPrimary,
+                          ),
+                    label: Text(buttonLabel),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepBody({
+    required StepStatus status,
+    required String? filename,
+    required int? count,
+    required int current,
+    required int total,
+    required String? disabledHint,
+    required bool enabled,
+  }) {
+    if (status == StepStatus.carregando) {
+      final progress = total > 0 ? (current / total).clamp(0.0, 1.0) : null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: AppColors.borderLight,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            total > 0
+                ? 'Lendo $current de $total linhas'
+                : 'Preparando arquivo...',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == StepStatus.processando) {
+      final progress = total > 0 ? (current / total).clamp(0.0, 1.0) : null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: AppColors.borderLight,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$current de $total processados',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == StepStatus.pronto && filename != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.description_outlined,
+                size: 16, color: AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                filename,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${_formatInt(count)} linhas',
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (status == StepStatus.pronto && count != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.successSoft,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.check_circle_outline,
+                size: 16, color: AppColors.success),
+            const SizedBox(width: 8),
+            Text(
+              '${_formatInt(count)} registros processados',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppColors.success,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Pendente
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.borderLight,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            enabled ? Icons.info_outline : Icons.lock_outline,
+            size: 16,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              disabledHint ?? 'Nenhum arquivo selecionado.',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBar() {
+    final visible = _loading ||
+        (_resultRows.isNotEmpty && _processElapsed > Duration.zero);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: !visible
+          ? const SizedBox.shrink()
+          : Container(
+              key: const ValueKey('status-bar'),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _loading
+                          ? AppColors.primarySoft
+                          : AppColors.successSoft,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _loading
+                          ? Icons.sync
+                          : Icons.task_alt_outlined,
+                      color: _loading ? AppColors.primary : AppColors.success,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _loading
+                              ? 'Processando cobranças'
+                              : 'Processamento concluído',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Próxima página',
-                          onPressed: safePage < totalPages - 1
-                              ? () => setState(() =>
-                          _currentPage = safePage + 1)
-                              : null,
-                          icon: const Icon(Icons.chevron_right),
-                        ),
-                        IconButton(
-                          tooltip: 'Última página',
-                          onPressed: safePage < totalPages - 1
-                              ? () => setState(() =>
-                          _currentPage = totalPages - 1)
-                              : null,
-                          icon: const Icon(Icons.last_page),
+                        const SizedBox(height: 2),
+                        Text(
+                          _loading
+                              ? '${_resultRows.length} de ${_conexaRows?.length ?? 0} registros'
+                              : '${_resultRows.length} registros em ${_formatDuration(_processElapsed)}',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ],
                     ),
-                  ],
-                );
-              }),
-            ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderLight),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.schedule_outlined,
+                            size: 14, color: AppColors.textSecondary),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formatDuration(_processElapsed),
+                          style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textPrimary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildErrorBanner() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.dangerSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withOpacity(0.2)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline,
+              color: AppColors.danger, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _status,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                color: AppColors.danger,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsCard() {
+    if (_resultRows.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    final totalPages = ((_resultRows.length - 1) ~/ _pageSize) + 1;
+    final safePage = _currentPage.clamp(0, totalPages - 1);
+    final startIdx = safePage * _pageSize;
+    final endIdx = (startIdx + _pageSize) > _resultRows.length
+        ? _resultRows.length
+        : startIdx + _pageSize;
+    final pageRows = _resultRows.sublist(startIdx, endIdx);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildResultsHeader(),
+          const Divider(height: 1, color: AppColors.borderLight),
+          _buildResultsTable(pageRows),
+          const Divider(height: 1, color: AppColors.borderLight),
+          _buildResultsFooter(
+            totalPages: totalPages,
+            safePage: safePage,
+            startIdx: startIdx,
+            endIdx: endIdx,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.inventory_2_outlined,
+              color: AppColors.textMuted,
+              size: 22,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Nenhum resultado ainda',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Envie as planilhas Localiza e Conexa e clique em Processar '
+            'para ver os registros consolidados aqui.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+      child: Row(
+        children: [
+          const Text(
+            'Resultado',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.1,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppColors.borderLight),
+            ),
+            child: Text(
+              '${_formatInt(_resultRows.length)} registros',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const Spacer(),
+          ElevatedButton.icon(
+            onPressed: _loading ? null : _exportCsv,
+            icon: const Icon(Icons.file_download_outlined, size: 16),
+            label: const Text('Exportar CSV'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsTable(List<OutputRow> pageRows) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 1100),
+        child: DataTable(
+          headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
+          headingTextStyle: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+            letterSpacing: 0.4,
+          ),
+          dataTextStyle: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 13,
+            color: AppColors.textPrimary,
+          ),
+          headingRowHeight: 44,
+          dataRowMinHeight: 48,
+          dataRowMaxHeight: 56,
+          horizontalMargin: 20,
+          columnSpacing: 28,
+          dividerThickness: 1,
+          columns: const [
+            DataColumn(label: Text('ID COBRANÇA')),
+            DataColumn(label: Text('CPF/CNPJ')),
+            DataColumn(label: Text('RAZÃO SOCIAL')),
+            DataColumn(label: Text('VALOR'), numeric: true),
+            DataColumn(label: Text('VENCIMENTO')),
+            DataColumn(label: Text('REGRA')),
+            DataColumn(label: Text('GRUPO')),
+            DataColumn(label: Text('TICKET')),
           ],
+          rows: List.generate(pageRows.length, (index) {
+            final row = pageRows[index];
+            final zebra = index.isOdd;
+            return DataRow(
+              color: MaterialStateProperty.resolveWith<Color?>((states) {
+                if (states.contains(MaterialState.hovered)) {
+                  return AppColors.primarySoft.withOpacity(0.25);
+                }
+                return zebra ? AppColors.surfaceAlt.withOpacity(0.5) : null;
+              }),
+              cells: [
+                DataCell(Text(
+                  row.idCobranca,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                )),
+                DataCell(Text(
+                  row.cpfCnpj,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                )),
+                DataCell(
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: Text(
+                      row.razaoSocialCliente,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+                DataCell(Text(
+                  row.valor,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                )),
+                DataCell(Text(
+                  row.vencimento,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                )),
+                DataCell(_RegraBadge(value: row.prazoCobranca)),
+                DataCell(_GrupoChip(value: row.grupo)),
+                DataCell(_TicketCell(
+                  ticketId: row.ticketId,
+                  url: row.ticketMovideskUrl,
+                )),
+              ],
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultsFooter({
+    required int totalPages,
+    required int safePage,
+    required int startIdx,
+    required int endIdx,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
+      child: Row(
+        children: [
+          Text(
+            'Mostrando ${startIdx + 1}–$endIdx de ${_formatInt(_resultRows.length)}',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          const Spacer(),
+          _PageIconButton(
+            tooltip: 'Primeira página',
+            icon: Icons.first_page,
+            onPressed:
+                safePage > 0 ? () => setState(() => _currentPage = 0) : null,
+          ),
+          _PageIconButton(
+            tooltip: 'Página anterior',
+            icon: Icons.chevron_left,
+            onPressed: safePage > 0
+                ? () => setState(() => _currentPage = safePage - 1)
+                : null,
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.borderLight),
+            ),
+            child: Text(
+              'Página ${safePage + 1} de $totalPages',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _PageIconButton(
+            tooltip: 'Próxima página',
+            icon: Icons.chevron_right,
+            onPressed: safePage < totalPages - 1
+                ? () => setState(() => _currentPage = safePage + 1)
+                : null,
+          ),
+          _PageIconButton(
+            tooltip: 'Última página',
+            icon: Icons.last_page,
+            onPressed: safePage < totalPages - 1
+                ? () => setState(() => _currentPage = totalPages - 1)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatInt(int value) {
+    final s = value.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+}
+
+// =============================================================================
+// UI helpers
+// =============================================================================
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+  final StepStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    late final String label;
+    late final Color fg;
+    late final Color bg;
+    switch (status) {
+      case StepStatus.pendente:
+        label = 'Pendente';
+        fg = AppColors.textMuted;
+        bg = AppColors.neutralSoft;
+        break;
+      case StepStatus.carregando:
+        label = 'Carregando';
+        fg = AppColors.warning;
+        bg = AppColors.warningSoft;
+        break;
+      case StepStatus.pronto:
+        label = 'Pronto';
+        fg = AppColors.success;
+        bg = AppColors.successSoft;
+        break;
+      case StepStatus.processando:
+        label = 'Processando';
+        fg = AppColors.primary;
+        bg = AppColors.primarySoft;
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: fg,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegraBadge extends StatelessWidget {
+  const _RegraBadge({required this.value});
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final is3 = value.trim() == '3';
+    final fg = is3 ? AppColors.primary : AppColors.textSecondary;
+    final bg = is3 ? AppColors.primarySoft : AppColors.neutralSoft;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        value.isEmpty ? '-' : value,
+        style: TextStyle(
+          fontFamily: 'JetBrains Mono',
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: fg,
+        ),
+      ),
+    );
+  }
+}
+
+class _GrupoChip extends StatelessWidget {
+  const _GrupoChip({required this.value});
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.trim().isEmpty) {
+      return const Text(
+        '—',
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 13,
+          color: AppColors.textMuted,
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Text(
+        value,
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _TicketCell extends StatelessWidget {
+  const _TicketCell({required this.ticketId, required this.url});
+  final String ticketId;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    if (ticketId.isEmpty) {
+      return const Text(
+        '—',
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 13,
+          color: AppColors.textMuted,
+        ),
+      );
+    }
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.parse(url);
+        await launchUrl(uri);
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '#$ticketId',
+              style: const TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.open_in_new,
+              size: 12,
+              color: AppColors.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PageIconButton extends StatelessWidget {
+  const _PageIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(8),
+            child: Icon(
+              icon,
+              size: 18,
+              color: onPressed == null
+                  ? AppColors.textMuted.withOpacity(0.5)
+                  : AppColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -680,17 +1905,13 @@ String formattedCnpj(String digits) {
 // =============================================================================
 
 /// Tenta fazer o decode do Excel de forma segura.
-/// A lib pode lançar "Bad state: No element" em células com formato
-/// inesperado (datas, fórmulas, células mescladas geradas por ERPs /
-/// Google Sheets). Envolvemos em try/catch e relançamos como
-/// [ProcessingException] com mensagem amigável.
-Excel _decodeExcel(Uint8List bytes) {
+excel.Excel _decodeExcel(Uint8List bytes) {
   try {
-    return Excel.decodeBytes(bytes);
+    return excel.Excel.decodeBytes(bytes);
   } catch (e) {
     throw const ProcessingException(
       'Não foi possível abrir o arquivo. '
-          'Abra-o no Excel ou LibreOffice, salve novamente como .xlsx e tente outra vez.',
+      'Abra-o no Excel ou LibreOffice, salve novamente como .xlsx e tente outra vez.',
     );
   }
 }
@@ -704,7 +1925,6 @@ Future<Map<String, LocalizaRow>> parseLocalizaBytes(
   Uint8List bytes, {
   ProgressCallback? onProgress,
 }) async {
-  // Deixa a UI pintar o spinner antes do decode pesado.
   await _yield();
   final excel = _decodeExcel(bytes);
   await _yield();
@@ -751,7 +1971,7 @@ Future<Map<String, LocalizaRow>> parseLocalizaBytes(
 
       map.putIfAbsent(
         cnpj,
-            () => LocalizaRow(
+        () => LocalizaRow(
           cnpj: cnpj,
           razaoSocial: _cellValue(row, razaoCol),
           grupo: _cellValue(row, grupoCol),
@@ -771,7 +1991,6 @@ Future<List<ConexaRow>> parseConexaBytes(
   Uint8List bytes, {
   ProgressCallback? onProgress,
 }) async {
-  // Deixa a UI pintar o spinner antes do decode pesado.
   await _yield();
   final excel = _decodeExcel(bytes);
   await _yield();
@@ -791,7 +2010,7 @@ Future<List<ConexaRow>> parseConexaBytes(
   final idCol = _findColumn(header, ['ID da Cobrança', 'idcobranca']);
   final cpfCnpjCol = _findColumn(header, ['CPF/CNPJ', 'cpf/cnpj']);
   final razaoCol =
-  _findColumn(header, ['Razão Social Cliente', 'razaosocial']);
+      _findColumn(header, ['Razão Social Cliente', 'razaosocial']);
   final valorCol = _findColumn(header, ['Valor']);
   final vencimentoCol = _findColumn(header, ['Vencimento']);
 
@@ -841,10 +2060,7 @@ Future<List<ConexaRow>> parseConexaBytes(
 // Parsing CSV (streaming linha-a-linha, memória constante)
 // =============================================================================
 
-/// Decodifica bytes como UTF-8 (com BOM opcional) e, se falhar, cai para
-/// Latin-1 / Windows-1252 — que é o padrão do Excel BR ao salvar CSV.
 String _decodeCsvText(Uint8List bytes) {
-  // BOM UTF-8: EF BB BF
   if (bytes.length >= 3 &&
       bytes[0] == 0xEF &&
       bytes[1] == 0xBB &&
@@ -858,8 +2074,6 @@ String _decodeCsvText(Uint8List bytes) {
   }
 }
 
-/// Detecta o separador olhando as primeiras ~2 mil bytes. Prioriza `;` sobre
-/// `,` porque o Excel brasileiro usa ponto-e-vírgula como padrão.
 String _detectCsvSeparator(String text) {
   final sample = text.length > 2048 ? text.substring(0, 2048) : text;
   final nlIdx = sample.indexOf('\n');
@@ -872,9 +2086,6 @@ String _detectCsvSeparator(String text) {
   return ',';
 }
 
-/// Parser CSV de linha única. Suporta campos entre aspas duplas com escape
-/// `""`. Não suporta quebras de linha dentro de campos (caso muito raro em
-/// exports de Excel de dados tabulares simples).
 List<String> _parseCsvLine(String line, String sep) {
   final fields = <String>[];
   final buf = StringBuffer();
@@ -943,16 +2154,14 @@ String _csvField(List<String> row, int index) {
   return row[index].trim();
 }
 
-/// Splits text em linhas tratando \r\n, \r e \n como separadores.
 List<String> _csvSplitLines(String text) {
-  // Normaliza todos os EOLs para \n antes de split.
   return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
 }
 
 Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
-    Uint8List bytes, {
-      ProgressCallback? onProgress,
-    }) async {
+  Uint8List bytes, {
+  ProgressCallback? onProgress,
+}) async {
   await _yield();
   final text = _decodeCsvText(bytes);
   await _yield();
@@ -967,11 +2176,10 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
 
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
   final cnpjCol = _csvFindColumn(header, ['CNPJ', 'cpfcnpj']);
-  final razaoCol =
-  _csvFindColumn(header, ['Razão Social', 'nomerazaosocial']);
+  final razaoCol = _csvFindColumn(header, ['Razão Social', 'nomerazaosocial']);
   final grupoCol = _csvFindColumn(header, ['Grupo']);
   final parceiroCol =
-  _csvFindColumn(header, ['Parceiro', 'parceirocomercial']);
+      _csvFindColumn(header, ['Parceiro', 'parceirocomercial']);
 
   if (cnpjCol == null ||
       razaoCol == null ||
@@ -999,7 +2207,7 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
       if (cnpj.isEmpty) continue;
       map.putIfAbsent(
         cnpj,
-            () => LocalizaRow(
+        () => LocalizaRow(
           cnpj: cnpj,
           razaoSocial: _csvField(row, razaoCol),
           grupo: _csvField(row, grupoCol),
@@ -1016,9 +2224,9 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
 }
 
 Future<List<ConexaRow>> parseConexaCsvBytes(
-    Uint8List bytes, {
-      ProgressCallback? onProgress,
-    }) async {
+  Uint8List bytes, {
+  ProgressCallback? onProgress,
+}) async {
   await _yield();
   final text = _decodeCsvText(bytes);
   await _yield();
@@ -1035,7 +2243,7 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
   final idCol = _csvFindColumn(header, ['ID da Cobrança', 'idcobranca']);
   final cpfCnpjCol = _csvFindColumn(header, ['CPF/CNPJ', 'cpf/cnpj']);
   final razaoCol =
-  _csvFindColumn(header, ['Razão Social Cliente', 'razaosocial']);
+      _csvFindColumn(header, ['Razão Social Cliente', 'razaosocial']);
   final valorCol = _csvFindColumn(header, ['Valor']);
   final vencimentoCol = _csvFindColumn(header, ['Vencimento']);
 
@@ -1082,7 +2290,7 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
   return rows;
 }
 
-Map<String, int> _headerMap(List<Data?> headerRow) {
+Map<String, int> _headerMap(List<excel.Data?> headerRow) {
   final map = <String, int>{};
   for (var i = 0; i < headerRow.length; i++) {
     try {
@@ -1107,8 +2315,7 @@ int? _findColumn(Map<String, int> header, List<String> candidates) {
   for (final entry in header.entries) {
     for (final candidate in candidates) {
       final normalized = normalizeKey(candidate);
-      if (entry.key.contains(normalized) ||
-          normalized.contains(entry.key)) {
+      if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
         return entry.value;
       }
     }
@@ -1117,7 +2324,7 @@ int? _findColumn(Map<String, int> header, List<String> candidates) {
   return null;
 }
 
-String _cellValue(List<Data?> row, int index) {
+String _cellValue(List<excel.Data?> row, int index) {
   try {
     if (index < 0 || index >= row.length) return '';
     final cell = row[index];
@@ -1135,14 +2342,11 @@ String _cellValue(List<Data?> row, int index) {
   }
 }
 
-/// Converte um valor em texto (ex.: "1234.56", "1.234,56", "R$ 1.234,56")
-/// para o padrão brasileiro "R$ 1.234,56". Se não conseguir parsear,
-/// retorna o valor original.
+/// Converte um valor em texto para o padrão brasileiro "R$ 1.234,56".
 String formatReal(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return '';
 
-  // Remove símbolo de moeda e espaços
   var cleaned = trimmed.replaceAll(RegExp(r'[R\$\s]'), '');
   if (cleaned.isEmpty) return trimmed;
 
@@ -1150,16 +2354,12 @@ String formatReal(String raw) {
   final hasComma = cleaned.contains(',');
 
   if (hasDot && hasComma) {
-    // Ambos separadores: o último é o decimal
     if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
-      // BR: 1.234,56
       cleaned = cleaned.replaceAll('.', '').replaceAll(',', '.');
     } else {
-      // US: 1,234.56
       cleaned = cleaned.replaceAll(',', '');
     }
   } else if (hasComma) {
-    // Apenas vírgula -> decimal
     cleaned = cleaned.replaceAll(',', '.');
   }
 
@@ -1172,7 +2372,6 @@ String formatReal(String raw) {
   final intPart = parts[0];
   final decPart = parts[1];
 
-  // Insere separador de milhar (.)
   final buffer = StringBuffer();
   for (var i = 0; i < intPart.length; i++) {
     if (i > 0 && (intPart.length - i) % 3 == 0) buffer.write('.');
