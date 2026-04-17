@@ -9,6 +9,7 @@ import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
@@ -168,6 +169,7 @@ class ProcessingPage extends StatefulWidget {
 
 class _ProcessingPageState extends State<ProcessingPage>
     with TickerProviderStateMixin {
+  String _appVersion = '';
   String? _localizaName;
   String? _conexaName;
   Map<String, LocalizaRow>? _localizaRows;
@@ -205,6 +207,17 @@ class _ProcessingPageState extends State<ProcessingPage>
       vsync: this,
       duration: const Duration(milliseconds: 950),
     );
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() {
+      _appVersion = packageInfo.buildNumber.isNotEmpty
+          ? '${packageInfo.version}+${packageInfo.buildNumber}'
+          : packageInfo.version;
+    });
   }
 
   @override
@@ -794,7 +807,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
                 'Conexa',
                 style: TextStyle(
@@ -816,6 +829,18 @@ class _ProcessingPageState extends State<ProcessingPage>
                   height: 1.1,
                 ),
               ),
+              if (_appVersion.isNotEmpty) ...[
+                SizedBox(height: 2),
+                Text(
+                  'v$_appVersion',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                    height: 1.1,
+                  ),
+                ),
+              ],
             ],
           ),
           const Spacer(),
