@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'dart:html' as html;
@@ -164,7 +165,8 @@ class ProcessingPage extends StatefulWidget {
   State<ProcessingPage> createState() => _ProcessingPageState();
 }
 
-class _ProcessingPageState extends State<ProcessingPage> {
+class _ProcessingPageState extends State<ProcessingPage>
+    with TickerProviderStateMixin {
   String? _localizaName;
   String? _conexaName;
   Map<String, LocalizaRow>? _localizaRows;
@@ -184,13 +186,52 @@ class _ProcessingPageState extends State<ProcessingPage> {
   int _currentPage = 0;
   static const int _pageSize = 20;
   static const _movideskToken = '0e5c4256-d385-4ec3-a60d-b035c812ef7c';
+  late final AnimationController _statusFadeController;
+  late final AnimationController _statusSpinController;
 
   List<OutputRow> _resultRows = [];
 
   @override
+  void initState() {
+    super.initState();
+    _statusFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _statusSpinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 950),
+    );
+  }
+
+  @override
   void dispose() {
     _processTimer?.cancel();
+    _statusFadeController.dispose();
+    _statusSpinController.dispose();
     super.dispose();
+  }
+
+  void _syncStatusAnimations() {
+    if (_loading) {
+      if (!_statusFadeController.isAnimating) {
+        _statusFadeController.repeat(reverse: true);
+      }
+      if (!_statusSpinController.isAnimating) {
+        _statusSpinController.repeat();
+      }
+      return;
+    }
+
+    if (_statusFadeController.isAnimating) {
+      _statusFadeController.stop();
+      _statusFadeController.value = 1;
+    }
+
+    if (_statusSpinController.isAnimating) {
+      _statusSpinController.stop();
+      _statusSpinController.value = 0;
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -1143,6 +1184,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
   }
 
   Widget _buildStatusBar() {
+    _syncStatusAnimations();
     final visible = _loading ||
         (_resultRows.isNotEmpty && _processElapsed > Duration.zero);
     return AnimatedSwitcher(
@@ -1168,28 +1210,51 @@ class _ProcessingPageState extends State<ProcessingPage> {
                           : AppColors.successSoft,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      _loading
-                          ? Icons.sync
-                          : Icons.task_alt_outlined,
-                      color: _loading ? AppColors.primary : AppColors.success,
-                      size: 18,
-                    ),
+                    child: _loading
+                        ? AnimatedBuilder(
+                            animation: _statusSpinController,
+                            child: const Icon(
+                              Icons.sync,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                            builder: (context, child) {
+                              return Transform.rotate(
+                                angle: _statusSpinController.value * 2 * math.pi,
+                                child: child,
+                              );
+                            },
+                          )
+                        : const Icon(
+                            Icons.task_alt_outlined,
+                            color: AppColors.success,
+                            size: 18,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _loading
-                              ? 'Processando cobranças'
-                              : 'Processamento concluído',
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                        FadeTransition(
+                          opacity: _loading
+                              ? Tween<double>(begin: 0.35, end: 1.0).animate(
+                                  CurvedAnimation(
+                                    parent: _statusFadeController,
+                                    curve: Curves.easeInOut,
+                                  ),
+                                )
+                              : const AlwaysStoppedAnimation<double>(1),
+                          child: Text(
+                            _loading
+                                ? 'Processando cobranças'
+                                : 'Processamento concluído',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 2),
