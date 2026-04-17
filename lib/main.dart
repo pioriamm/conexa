@@ -217,12 +217,20 @@ class _ProcessingPageState extends State<ProcessingPage>
   }
 
   List<OutputRow> get _filteredResultRows {
-    final filterDigits = digitsOnly(_cnpjFilter);
-    final rows = filterDigits.isEmpty
+    final filterText = _cnpjFilter.trim();
+    final filterKey = normalizeKey(filterText);
+    final filterDigits = digitsOnly(filterText);
+
+    final rows = filterText.isEmpty
         ? _resultRows.toList()
         : _resultRows.where((row) {
             final rowDigits = digitsOnly(row.cpfCnpj);
-            return rowDigits.contains(filterDigits);
+            final grupoKey = normalizeKey(row.grupo);
+            final matchesCnpj =
+                filterDigits.isNotEmpty && rowDigits.contains(filterDigits);
+            final matchesGrupo =
+                filterKey.isNotEmpty && grupoKey.contains(filterKey);
+            return matchesCnpj || matchesGrupo;
           }).toList();
 
     rows.sort((a, b) {
@@ -430,7 +438,7 @@ class _ProcessingPageState extends State<ProcessingPage>
         final localiza = localizaMap[cnpjDigits];
         final modalidade = _resolveModalidade(localiza?.modalidade);
         final isWhiteLabel = _isWhiteLabel(modalidade);
-        final regraCobranca = isWhiteLabel ? '7' : '3';
+        final regraCobranca = isWhiteLabel ? '3' : '7';
         final regraDias = int.parse(regraCobranca);
         final dataCobrancaDate = _buildChargeDate(row.vencimento, regraDias);
         final cobrar = _buildChargeLabel(dataCobrancaDate);
@@ -613,7 +621,13 @@ class _ProcessingPageState extends State<ProcessingPage>
     if (value.isEmpty) {
       return 'CLIENTE FINAL';
     }
-    return value.toUpperCase();
+
+    final normalized = normalizeKey(value);
+    if (normalized.contains('whitelabel')) {
+      return 'WHITE LABEL';
+    }
+
+    return 'CLIENTE FINAL';
   }
 
   // ---------------------------------------------------------------------------
@@ -1507,7 +1521,7 @@ class _ProcessingPageState extends State<ProcessingPage>
 
   Widget _buildResultsHeader() {
     final filteredCount = _filteredResultRows.length;
-    final hasFilter = digitsOnly(_cnpjFilter).isNotEmpty;
+    final hasFilter = _cnpjFilter.trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
@@ -1555,10 +1569,9 @@ class _ProcessingPageState extends State<ProcessingPage>
                   _currentPage = 0;
                 });
               },
-              keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Pesquisar CNPJ',
+                hintText: 'Pesquisar CNPJ ou Grupo',
                 prefixIcon: const Icon(Icons.search, size: 18),
                 suffixIcon: _cnpjFilter.isNotEmpty
                     ? IconButton(
@@ -1855,7 +1868,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           const Icon(Icons.search_off, size: 30, color: AppColors.textMuted),
           const SizedBox(height: 12),
           const Text(
-            'Nenhum CNPJ encontrado',
+            'Nenhum resultado encontrado',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 15,
@@ -1865,7 +1878,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           ),
           const SizedBox(height: 4),
           const Text(
-            'Ajuste o número digitado no campo de pesquisa para ver os resultados.',
+            'Ajuste o termo digitado no campo de pesquisa para ver os resultados.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Inter',
