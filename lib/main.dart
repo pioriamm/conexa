@@ -451,14 +451,14 @@ class _ProcessingPageState extends State<ProcessingPage>
         final dataCobrancaDate = _buildChargeDate(row.vencimento, regraDias);
         final cobrar = _buildChargeLabel(dataCobrancaDate);
 
-        int? ticketId;
+        MovideskTicketInfo? ticketInfo;
         try {
-          ticketId = await _fetchMovideskTicketId(
+          ticketInfo = await _fetchMovideskTicketInfo(
             formattedCnpj(cnpjDigits),
             _movideskToken,
           );
         } catch (_) {
-          ticketId = null;
+          ticketInfo = null;
         }
 
         final output = OutputRow(
@@ -469,10 +469,11 @@ class _ProcessingPageState extends State<ProcessingPage>
           vencimento: row.vencimento,
           prazoCobranca: regraCobranca,
           dataCobranca: formatDateBr(dataCobrancaDate) ?? '—',
-          ticketId: ticketId?.toString() ?? '',
-          ticketMovideskUrl: ticketId == null
+          ticketId: ticketInfo?.id?.toString() ?? '',
+          ticketStatus: ticketInfo?.status ?? '',
+          ticketMovideskUrl: ticketInfo?.id == null
               ? ''
-              : 'https://suporte.conciliadora.com.br/Ticket/Edit/$ticketId',
+              : 'https://suporte.conciliadora.com.br/Ticket/Edit/${ticketInfo!.id}',
           grupo: localiza?.grupo ?? '',
           modalidade: modalidade,
           cobrar: cobrar,
@@ -513,7 +514,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
   }
 
-  Future<int?> _fetchMovideskTicketId(
+  Future<MovideskTicketInfo?> _fetchMovideskTicketInfo(
       String cnpjFormatado, String token) async {
     if (token.isEmpty || cnpjFormatado.isEmpty) {
       return null;
@@ -524,7 +525,7 @@ class _ProcessingPageState extends State<ProcessingPage>
 
     final uri = Uri.https('api.movidesk.com', '/public/v1/tickets', {
       'token': token,
-      r'$select': 'id',
+      r'$select': 'id,status',
       r'$filter': filter,
       r'$orderby': 'id desc',
       r'$top': '1',
@@ -571,7 +572,10 @@ class _ProcessingPageState extends State<ProcessingPage>
 
         final first = data.first;
         if (first is Map<String, dynamic>) {
-          return first['id'] as int?;
+          final id = first['id'] as int?;
+          final status = first['status'];
+          final statusLabel = status == null ? '' : status.toString();
+          return MovideskTicketInfo(id: id, status: statusLabel);
         }
         throw const ProcessingException(
           'Não foi possível identificar o ticket retornado pelo Movidesk.',
@@ -666,6 +670,7 @@ class _ProcessingPageState extends State<ProcessingPage>
       'Grupo',
       'Modalidade',
       'Ticket',
+      'Status Ticket',
       'Ticket URL',
     ].map(escape).join(';'));
 
@@ -682,6 +687,7 @@ class _ProcessingPageState extends State<ProcessingPage>
         row.grupo,
         row.modalidade,
         row.ticketId,
+        row.ticketStatus,
         row.ticketMovideskUrl,
       ].map(escape).join(';'));
     }
@@ -1686,6 +1692,7 @@ class _ProcessingPageState extends State<ProcessingPage>
                   DataColumn(label: Text('GRUPO')),
                   DataColumn(label: Text('MODALIDADE')),
                   DataColumn(label: Text('TICKET')),
+                  DataColumn(label: Text('STATUS TICKET')),
                 ],
               rows: List.generate(pageRows.length, (index) {
                 final row = pageRows[index];
@@ -1779,6 +1786,15 @@ class _ProcessingPageState extends State<ProcessingPage>
                     DataCell(_TicketCell(
                       ticketId: row.ticketId,
                       url: row.ticketMovideskUrl,
+                    )),
+                    DataCell(Text(
+                      row.ticketStatus.isEmpty ? '—' : row.ticketStatus,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
                     )),
                   ],
                 );
@@ -2225,6 +2241,7 @@ class OutputRow {
     required this.prazoCobranca,
     required this.dataCobranca,
     required this.ticketId,
+    required this.ticketStatus,
     required this.ticketMovideskUrl,
     required this.grupo,
     required this.modalidade,
@@ -2239,10 +2256,21 @@ class OutputRow {
   final String prazoCobranca;
   final String dataCobranca;
   final String ticketId;
+  final String ticketStatus;
   final String ticketMovideskUrl;
   final String grupo;
   final String modalidade;
   final String cobrar;
+}
+
+class MovideskTicketInfo {
+  const MovideskTicketInfo({
+    required this.id,
+    required this.status,
+  });
+
+  final int? id;
+  final String status;
 }
 
 class ProcessingException implements Exception {
