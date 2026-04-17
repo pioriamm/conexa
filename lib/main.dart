@@ -417,9 +417,11 @@ class _ProcessingPageState extends State<ProcessingPage>
         final localiza = localizaMap[cnpjDigits];
         final isWhiteLabel = _isWhiteLabel(localiza?.modalidade ?? '');
         final regraCobranca = isWhiteLabel ? '7' : '3';
-        final cobrar = _mustChargeToday(row.vencimento, int.parse(regraCobranca))
-            ? 'Sim'
-            : 'Não';
+        final regraDias = int.parse(regraCobranca);
+        final dataCobrancaDate = _buildChargeDate(row.vencimento, regraDias);
+        final cobrar = _shouldPerformCharge(dataCobrancaDate)
+            ? 'Realizar cobrança'
+            : 'No prazo';
 
         final ticketId = await _fetchMovideskTicketId(
           formattedCnpj(cnpjDigits),
@@ -433,6 +435,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           valor: formatReal(row.valor),
           vencimento: row.vencimento,
           prazoCobranca: regraCobranca,
+          dataCobranca: formatDateBr(dataCobrancaDate) ?? '—',
           ticketId: ticketId?.toString() ?? '',
           ticketMovideskUrl: ticketId == null
               ? ''
@@ -547,14 +550,22 @@ class _ProcessingPageState extends State<ProcessingPage>
     return normalizeKey(modalidade).contains('whitelabel');
   }
 
-  bool _mustChargeToday(String vencimento, int graceDays) {
+  DateTime? _buildChargeDate(String vencimento, int graceDays) {
     final dueDate = _parseFlexibleDate(vencimento);
-    if (dueDate == null) return false;
-    final limitDate = dueDate.add(Duration(days: graceDays));
+    if (dueDate == null) return null;
+    return dueDate.add(Duration(days: graceDays));
+  }
+
+  bool _shouldPerformCharge(DateTime? chargeDate) {
+    if (chargeDate == null) return false;
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
-    final limitOnly = DateTime(limitDate.year, limitDate.month, limitDate.day);
-    return !limitOnly.isBefore(todayOnly);
+    final chargeDateOnly = DateTime(
+      chargeDate.year,
+      chargeDate.month,
+      chargeDate.day,
+    );
+    return chargeDateOnly.isAfter(todayOnly);
   }
 
   // ---------------------------------------------------------------------------
@@ -580,9 +591,10 @@ class _ProcessingPageState extends State<ProcessingPage>
       'Valor',
       'Vencimento',
       'Pagamento regra',
+      'Data cobrança',
+      'Cobrar',
       'Grupo',
       'Modalidade',
-      'Cobrar',
       'Ticket',
       'Ticket URL',
     ].map(escape).join(';'));
@@ -595,9 +607,10 @@ class _ProcessingPageState extends State<ProcessingPage>
         row.valor,
         row.vencimento,
         row.prazoCobranca,
+        row.dataCobranca,
+        row.cobrar,
         row.grupo,
         row.modalidade,
-        row.cobrar,
         row.ticketId,
         row.ticketMovideskUrl,
       ].map(escape).join(';'));
@@ -1584,9 +1597,10 @@ class _ProcessingPageState extends State<ProcessingPage>
               DataColumn(label: Text('VALOR'), numeric: true),
               DataColumn(label: Text('VENCIMENTO')),
               DataColumn(label: Text('REGRA')),
+              DataColumn(label: Text('DATA COBRANÇA')),
+              DataColumn(label: Text('COBRAR')),
               DataColumn(label: Text('GRUPO')),
               DataColumn(label: Text('MODALIDADE')),
-              DataColumn(label: Text('COBRAR')),
               DataColumn(label: Text('TICKET')),
             ],
             rows: List.generate(pageRows.length, (index) {
@@ -1652,19 +1666,20 @@ class _ProcessingPageState extends State<ProcessingPage>
                     ),
                   )),
                   DataCell(_RegraBadge(value: row.prazoCobranca)),
-                  DataCell(_GrupoChip(value: row.grupo)),
-                  DataCell(Text(row.modalidade)),
                   DataCell(
                     Text(
-                      row.cobrar,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: row.cobrar == 'Sim'
-                            ? AppColors.success
-                            : AppColors.textSecondary,
+                      row.dataCobranca,
+                      style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        fontFeatures: [FontFeature.tabularFigures()],
                       ),
                     ),
                   ),
+                  DataCell(_CobrarBadge(value: row.cobrar)),
+                  DataCell(_GrupoChip(value: row.grupo)),
+                  DataCell(Text(row.modalidade)),
                   DataCell(_TicketCell(
                     ticketId: row.ticketId,
                     url: row.ticketMovideskUrl,
@@ -1937,12 +1952,41 @@ class _GrupoChip extends StatelessWidget {
         border: Border.all(color: AppColors.borderLight),
       ),
       child: Text(
-        value,
+        value.toUpperCase(),
         style: const TextStyle(
           fontFamily: 'Inter',
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _CobrarBadge extends StatelessWidget {
+  const _CobrarBadge({required this.value});
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final shouldCharge = value.trim().toLowerCase() == 'realizar cobrança';
+    final fg = shouldCharge ? AppColors.warning : AppColors.success;
+    final bg = shouldCharge ? AppColors.warningSoft : AppColors.successSoft;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        value.isEmpty ? '—' : value,
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: fg,
         ),
       ),
     );
@@ -2076,6 +2120,7 @@ class OutputRow {
     required this.valor,
     required this.vencimento,
     required this.prazoCobranca,
+    required this.dataCobranca,
     required this.ticketId,
     required this.ticketMovideskUrl,
     required this.grupo,
@@ -2089,6 +2134,7 @@ class OutputRow {
   final String valor;
   final String vencimento;
   final String prazoCobranca;
+  final String dataCobranca;
   final String ticketId;
   final String ticketMovideskUrl;
   final String grupo;
@@ -2608,6 +2654,13 @@ String formatReal(String raw) {
   }
 
   return 'R\$ ${negative ? '-' : ''}${buffer.toString()},$decPart';
+}
+
+String? formatDateBr(DateTime? value) {
+  if (value == null) return null;
+  final day = value.day.toString().padLeft(2, '0');
+  final month = value.month.toString().padLeft(2, '0');
+  return '$day/$month/${value.year}';
 }
 
 String normalizeKey(String input) {
