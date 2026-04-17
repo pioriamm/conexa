@@ -91,7 +91,7 @@ class _ProcessingPageState extends State<ProcessingPage> {
 
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xlsx'],
+      allowedExtensions: ['xlsx', 'csv'],
       withData: true,
     );
 
@@ -114,9 +114,23 @@ class _ProcessingPageState extends State<ProcessingPage> {
       return;
     }
 
+    final isCsv = (file.extension ?? '').toLowerCase() == 'csv' ||
+        file.name.toLowerCase().endsWith('.csv');
+
     try {
       if (isLocaliza) {
-        final parsed = await parseLocalizaBytes(
+        final parsed = isCsv
+            ? await parseLocalizaCsvBytes(
+          file.bytes!,
+          onProgress: (current, total) {
+            if (!mounted) return;
+            setState(() {
+              _localizaCurrent = current;
+              _localizaTotal = total;
+            });
+          },
+        )
+            : await parseLocalizaBytes(
           file.bytes!,
           onProgress: (current, total) {
             if (!mounted) return;
@@ -136,7 +150,18 @@ class _ProcessingPageState extends State<ProcessingPage> {
           _status = 'Arquivo Localiza carregado com sucesso.';
         });
       } else {
-        final parsed = await parseConexaBytes(
+        final parsed = isCsv
+            ? await parseConexaCsvBytes(
+          file.bytes!,
+          onProgress: (current, total) {
+            if (!mounted) return;
+            setState(() {
+              _conexaCurrent = current;
+              _conexaTotal = total;
+            });
+          },
+        )
+            : await parseConexaBytes(
           file.bytes!,
           onProgress: (current, total) {
             if (!mounted) return;
@@ -343,9 +368,12 @@ class _ProcessingPageState extends State<ProcessingPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '1) Envie a planilha Localiza Estabelecimento\n'
-                  '2) Envie a planilha Conexa\n'
-                  '3) Clique em Processar',
+              '1) Envie a planilha Localiza Estabelecimento (.xlsx ou .csv)\n'
+                  '2) Envie a planilha Conexa (.xlsx ou .csv)\n'
+                  '3) Clique em Processar\n\n'
+                  'Dica: para bases grandes (>50 mil linhas), salve a planilha '
+                  'como CSV no Excel ("Salvar como → CSV UTF-8") — o upload '
+                  'fica muito mais rápido.',
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -798,6 +826,251 @@ Future<List<ConexaRow>> parseConexaBytes(
           razaoSocialCliente: _cellValue(row, razaoCol),
           valor: _cellValue(row, valorCol),
           vencimento: _cellValue(row, vencimentoCol),
+        ),
+      );
+    } catch (_) {
+      continue;
+    }
+  }
+
+  onProgress?.call(total, total);
+  return rows;
+}
+
+// =============================================================================
+// Parsing CSV (streaming linha-a-linha, memória constante)
+// =============================================================================
+
+/// Decodifica bytes como UTF-8 (com BOM opcional) e, se falhar, cai para
+/// Latin-1 / Windows-1252 — que é o padrão do Excel BR ao salvar CSV.
+String _decodeCsvText(Uint8List bytes) {
+  // BOM UTF-8: EF BB BF
+  if (bytes.length >= 3 &&
+      bytes[0] == 0xEF &&
+      bytes[1] == 0xBB &&
+      bytes[2] == 0xBF) {
+    return utf8.decode(bytes.sublist(3));
+  }
+  try {
+    return utf8.decode(bytes);
+  } catch (_) {
+    return latin1.decode(bytes);
+  }
+}
+
+/// Detecta o separador olhando as primeiras ~2 mil bytes. Prioriza `;` sobre
+/// `,` porque o Excel brasileiro usa ponto-e-vírgula como padrão.
+String _detectCsvSeparator(String text) {
+  final sample = text.length > 2048 ? text.substring(0, 2048) : text;
+  final nlIdx = sample.indexOf('\n');
+  final firstLine = nlIdx < 0 ? sample : sample.substring(0, nlIdx);
+  final semi = ';'.allMatches(firstLine).length;
+  final comma = ','.allMatches(firstLine).length;
+  final tab = '\t'.allMatches(firstLine).length;
+  if (tab > semi && tab > comma) return '\t';
+  if (semi >= comma) return ';';
+  return ',';
+}
+
+/// Parser CSV de linha única. Suporta campos entre aspas duplas com escape
+/// `""`. Não suporta quebras de linha dentro de campos (caso muito raro em
+/// exports de Excel de dados tabulares simples).
+List<String> _parseCsvLine(String line, String sep) {
+  final fields = <String>[];
+  final buf = StringBuffer();
+  var inQuotes = false;
+  var i = 0;
+  while (i < line.length) {
+    final ch = line[i];
+    if (inQuotes) {
+      if (ch == '"') {
+        if (i + 1 < line.length && line[i + 1] == '"') {
+          buf.write('"');
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+      } else {
+        buf.write(ch);
+        i++;
+      }
+    } else {
+      if (ch == '"' && buf.isEmpty) {
+        inQuotes = true;
+        i++;
+      } else if (ch == sep) {
+        fields.add(buf.toString());
+        buf.clear();
+        i++;
+      } else {
+        buf.write(ch);
+        i++;
+      }
+    }
+  }
+  fields.add(buf.toString());
+  return fields;
+}
+
+Map<String, int> _csvHeaderMap(List<String> headerRow) {
+  final map = <String, int>{};
+  for (var i = 0; i < headerRow.length; i++) {
+    final key = normalizeKey(headerRow[i]);
+    if (key.isNotEmpty) map[key] = i;
+  }
+  return map;
+}
+
+int? _csvFindColumn(Map<String, int> header, List<String> candidates) {
+  for (final candidate in candidates) {
+    final normalized = normalizeKey(candidate);
+    if (header.containsKey(normalized)) return header[normalized];
+  }
+  for (final entry in header.entries) {
+    for (final candidate in candidates) {
+      final normalized = normalizeKey(candidate);
+      if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+  }
+  return null;
+}
+
+String _csvField(List<String> row, int index) {
+  if (index < 0 || index >= row.length) return '';
+  return row[index].trim();
+}
+
+/// Splits text em linhas tratando \r\n, \r e \n como separadores.
+List<String> _csvSplitLines(String text) {
+  // Normaliza todos os EOLs para \n antes de split.
+  return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+}
+
+Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
+    Uint8List bytes, {
+      ProgressCallback? onProgress,
+    }) async {
+  await _yield();
+  final text = _decodeCsvText(bytes);
+  await _yield();
+
+  final sep = _detectCsvSeparator(text);
+  final lines = _csvSplitLines(text);
+  await _yield();
+
+  if (lines.isEmpty) {
+    throw const ProcessingException('CSV do Localiza está vazio.');
+  }
+
+  final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
+  final cnpjCol = _csvFindColumn(header, ['CNPJ', 'cpfcnpj']);
+  final razaoCol =
+  _csvFindColumn(header, ['Razão Social', 'nomerazaosocial']);
+  final grupoCol = _csvFindColumn(header, ['Grupo']);
+  final parceiroCol =
+  _csvFindColumn(header, ['Parceiro', 'parceirocomercial']);
+
+  if (cnpjCol == null ||
+      razaoCol == null ||
+      grupoCol == null ||
+      parceiroCol == null) {
+    throw const ProcessingException(
+      'O CSV do Localiza precisa conter colunas de CNPJ, Razão Social, Grupo e Parceiro.',
+    );
+  }
+
+  final total = lines.length - 1;
+  onProgress?.call(0, total);
+
+  final map = <String, LocalizaRow>{};
+  for (var i = 1; i < lines.length; i++) {
+    if (i % 500 == 0) {
+      onProgress?.call(i, total);
+      await _yield();
+    }
+    final raw = lines[i];
+    if (raw.isEmpty) continue;
+    try {
+      final row = _parseCsvLine(raw, sep);
+      final cnpj = digitsOnly(_csvField(row, cnpjCol));
+      if (cnpj.isEmpty) continue;
+      map.putIfAbsent(
+        cnpj,
+            () => LocalizaRow(
+          cnpj: cnpj,
+          razaoSocial: _csvField(row, razaoCol),
+          grupo: _csvField(row, grupoCol),
+          parceiro: _csvField(row, parceiroCol),
+        ),
+      );
+    } catch (_) {
+      continue;
+    }
+  }
+
+  onProgress?.call(total, total);
+  return map;
+}
+
+Future<List<ConexaRow>> parseConexaCsvBytes(
+    Uint8List bytes, {
+      ProgressCallback? onProgress,
+    }) async {
+  await _yield();
+  final text = _decodeCsvText(bytes);
+  await _yield();
+
+  final sep = _detectCsvSeparator(text);
+  final lines = _csvSplitLines(text);
+  await _yield();
+
+  if (lines.isEmpty) {
+    throw const ProcessingException('CSV da Conexa está vazio.');
+  }
+
+  final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
+  final idCol = _csvFindColumn(header, ['ID da Cobrança', 'idcobranca']);
+  final cpfCnpjCol = _csvFindColumn(header, ['CPF/CNPJ', 'cpf/cnpj']);
+  final razaoCol =
+  _csvFindColumn(header, ['Razão Social Cliente', 'razaosocial']);
+  final valorCol = _csvFindColumn(header, ['Valor']);
+  final vencimentoCol = _csvFindColumn(header, ['Vencimento']);
+
+  if (idCol == null ||
+      cpfCnpjCol == null ||
+      razaoCol == null ||
+      valorCol == null ||
+      vencimentoCol == null) {
+    throw const ProcessingException(
+      'O CSV da Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
+    );
+  }
+
+  final total = lines.length - 1;
+  onProgress?.call(0, total);
+
+  final rows = <ConexaRow>[];
+  for (var i = 1; i < lines.length; i++) {
+    if (i % 500 == 0) {
+      onProgress?.call(i, total);
+      await _yield();
+    }
+    final raw = lines[i];
+    if (raw.isEmpty) continue;
+    try {
+      final row = _parseCsvLine(raw, sep);
+      final cpfCnpj = _csvField(row, cpfCnpjCol);
+      if (digitsOnly(cpfCnpj).isEmpty) continue;
+      rows.add(
+        ConexaRow(
+          idCobranca: _csvField(row, idCol),
+          cpfCnpj: cpfCnpj,
+          razaoSocialCliente: _csvField(row, razaoCol),
+          valor: _csvField(row, valorCol),
+          vencimento: _csvField(row, vencimentoCol),
         ),
       );
     } catch (_) {
