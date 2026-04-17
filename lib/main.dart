@@ -223,15 +223,23 @@ class _ProcessingPageState extends State<ProcessingPage>
 
     final rows = filterText.isEmpty
         ? _resultRows.toList()
-        : _resultRows.where((row) {
-            final rowDigits = digitsOnly(row.cpfCnpj);
-            final grupoKey = normalizeKey(row.grupo);
-            final matchesCnpj =
-                filterDigits.isNotEmpty && rowDigits.contains(filterDigits);
-            final matchesGrupo =
-                filterKey.isNotEmpty && grupoKey.contains(filterKey);
-            return matchesCnpj || matchesGrupo;
-          }).toList();
+        : () {
+            final groupMatches = filterKey.isEmpty
+                ? const <OutputRow>[]
+                : _resultRows.where((row) {
+                    final grupoKey = normalizeKey(row.grupo);
+                    return grupoKey.contains(filterKey);
+                  }).toList();
+
+            if (groupMatches.isNotEmpty) {
+              return groupMatches;
+            }
+
+            return _resultRows.where((row) {
+              final rowDigits = digitsOnly(row.cpfCnpj);
+              return filterDigits.isNotEmpty && rowDigits.contains(filterDigits);
+            }).toList();
+          }();
 
     rows.sort((a, b) {
       final aDate = _parseFlexibleDate(a.vencimento);
