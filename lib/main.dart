@@ -1692,7 +1692,6 @@ class _ProcessingPageState extends State<ProcessingPage>
                   DataColumn(label: Text('GRUPO')),
                   DataColumn(label: Text('MODALIDADE')),
                   DataColumn(label: Text('TICKET')),
-                  DataColumn(label: Text('STATUS TICKET')),
                 ],
               rows: List.generate(pageRows.length, (index) {
                 final row = pageRows[index];
@@ -1785,16 +1784,8 @@ class _ProcessingPageState extends State<ProcessingPage>
                     )),
                     DataCell(_TicketCell(
                       ticketId: row.ticketId,
+                      ticketStatus: row.ticketStatus,
                       url: row.ticketMovideskUrl,
-                    )),
-                    DataCell(Text(
-                      row.ticketStatus.isEmpty ? '—' : row.ticketStatus,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textSecondary,
-                      ),
                     )),
                   ],
                 );
@@ -2113,8 +2104,13 @@ class _CobrarBadge extends StatelessWidget {
 }
 
 class _TicketCell extends StatelessWidget {
-  const _TicketCell({required this.ticketId, required this.url});
+  const _TicketCell({
+    required this.ticketId,
+    required this.ticketStatus,
+    required this.url,
+  });
   final String ticketId;
+  final String ticketStatus;
   final String url;
 
   @override
@@ -2149,6 +2145,18 @@ class _TicketCell extends StatelessWidget {
                 color: AppColors.primary,
               ),
             ),
+            if (ticketStatus.trim().isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(
+                ticketStatus,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(width: 4),
             const Icon(
               Icons.open_in_new,
