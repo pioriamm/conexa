@@ -11,9 +11,9 @@ import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'package:url_launcher/url_launcher.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1741,25 +1741,32 @@ class _ProcessingPageState extends State<ProcessingPage>
                     return zebra ? AppColors.surfaceAlt.withOpacity(0.5) : null;
                   }),
                   cells: [
-                    DataCell(Text(
-                      row.idCobranca,
-                      style: const TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 13,
-                        color: AppColors.textPrimary,
+                    _buildCopyableDataCell(
+                      valueToCopy: row.idCobranca,
+                      child: Text(
+                        row.idCobranca,
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 13,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    )),
-                    DataCell(Text(
-                      row.cpfCnpj,
-                      style: const TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.cpfCnpj,
+                      child: Text(
+                        row.cpfCnpj,
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
-                    )),
-                    DataCell(
-                      ConstrainedBox(
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.razaoSocialCliente,
+                      child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxWidth: compact ? 180 : 260,
                         ),
@@ -1775,28 +1782,38 @@ class _ProcessingPageState extends State<ProcessingPage>
                         ),
                       ),
                     ),
-                    DataCell(Text(
-                      row.valor,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    _buildCopyableDataCell(
+                      valueToCopy: row.valor,
+                      child: Text(
+                        row.valor,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
-                    )),
-                    DataCell(Text(
-                      row.vencimento,
-                      style: const TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.vencimento,
+                      child: Text(
+                        row.vencimento,
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
-                    )),
-                    DataCell(_RegraBadge(value: row.prazoCobranca)),
-                    DataCell(
-                      Text(
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.prazoCobranca,
+                      child: _RegraBadge(value: row.prazoCobranca),
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.dataCobranca,
+                      child: Text(
                         row.dataCobranca,
                         style: TextStyle(
                           fontFamily: 'JetBrains Mono',
@@ -1808,19 +1825,29 @@ class _ProcessingPageState extends State<ProcessingPage>
                         ),
                       ),
                     ),
-                    DataCell(_CobrarBadge(value: row.cobrar)),
-                    DataCell(_GrupoChip(value: row.grupo)),
-                    DataCell(Text(
-                      row.modalidade,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
+                    _buildCopyableDataCell(
+                      valueToCopy: row.cobrar,
+                      child: _CobrarBadge(value: row.cobrar),
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.grupo,
+                      child: _GrupoChip(value: row.grupo),
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.modalidade,
+                      child: Text(
+                        row.modalidade,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    )),
-                    DataCell(
-                      ConstrainedBox(
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.emails,
+                      child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxWidth: compact ? 180 : 240,
                         ),
@@ -1835,19 +1862,24 @@ class _ProcessingPageState extends State<ProcessingPage>
                         ),
                       ),
                     ),
-                    DataCell(Text(
-                      row.telefone,
-                      style: const TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
+                    _buildCopyableDataCell(
+                      valueToCopy: row.telefone,
+                      child: Text(
+                        row.telefone,
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    )),
-                    DataCell(_TicketCell(
-                      ticketId: row.ticketId,
-                      ticketStatus: row.ticketStatus,
-                      url: row.ticketMovideskUrl,
-                    )),
+                    ),
+                    _buildCopyableDataCell(
+                      valueToCopy: row.ticketId,
+                      child: _TicketCell(
+                        ticketId: row.ticketId,
+                        ticketStatus: row.ticketStatus,
+                      ),
+                    ),
                   ],
                 );
               }),
@@ -1857,6 +1889,32 @@ class _ProcessingPageState extends State<ProcessingPage>
         );
       },
     );
+  }
+
+  DataCell _buildCopyableDataCell({
+    required Widget child,
+    required String valueToCopy,
+  }) {
+    return DataCell(
+      child,
+      onTap: () => _copyCellValue(valueToCopy),
+    );
+  }
+
+  Future<void> _copyCellValue(String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) return;
+    final preview = value.trim().isEmpty ? '(vazio)' : value;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Conteúdo copiado: ${preview.length > 70 ? '${preview.substring(0, 67)}...' : preview}',
+          ),
+          duration: const Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   Widget _buildProcessingSpinnerIcon({
@@ -2168,11 +2226,9 @@ class _TicketCell extends StatelessWidget {
   const _TicketCell({
     required this.ticketId,
     required this.ticketStatus,
-    required this.url,
   });
   final String ticketId;
   final String ticketStatus;
-  final String url;
 
   @override
   Widget build(BuildContext context) {
@@ -2186,46 +2242,33 @@ class _TicketCell extends StatelessWidget {
         ),
       );
     }
-    return InkWell(
-      onTap: () async {
-        final uri = Uri.parse(url);
-        await launchUrl(uri);
-      },
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '#$ticketId',
-              style: const TextStyle(
-                fontFamily: 'JetBrains Mono',
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
-              ),
-            ),
-            if (ticketStatus.trim().isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(
-                ticketStatus,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(width: 4),
-            const Icon(
-              Icons.open_in_new,
-              size: 12,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '#$ticketId',
+            style: const TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
               color: AppColors.primary,
             ),
+          ),
+          if (ticketStatus.trim().isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text(
+              ticketStatus,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
