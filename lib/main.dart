@@ -465,7 +465,8 @@ class _ProcessingPageState extends State<ProcessingPage>
         final isWhiteLabel = _isWhiteLabel(modalidade);
         final regraCobranca = isWhiteLabel ? '3' : '7';
         final regraDias = int.parse(regraCobranca);
-        final dataCobrancaDate = _buildChargeDate(row.vencimento, regraDias);
+        final dataCobranca = _buildChargeDate(row.vencimento, regraDias);
+        final dataCobrancaDate = dataCobranca?.date;
         final cobrar = _buildChargeLabel(dataCobrancaDate);
 
         MovideskTicketInfo? ticketInfo;
@@ -486,6 +487,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           vencimento: row.vencimento,
           prazoCobranca: regraCobranca,
           dataCobranca: formatDateBr(dataCobrancaDate) ?? '—',
+          dataCobrancaTransferida: dataCobranca?.wasTransferred ?? false,
           ticketId: ticketInfo?.id?.toString() ?? '',
           ticketStatus: ticketInfo?.status ?? '',
           ticketMovideskUrl: ticketInfo?.id == null
@@ -615,10 +617,11 @@ class _ProcessingPageState extends State<ProcessingPage>
     return normalizeKey(modalidade).contains('whitelabel');
   }
 
-  DateTime? _buildChargeDate(String vencimento, int graceDays) {
+  ChargeDateResult? _buildChargeDate(String vencimento, int graceDays) {
     final dueDate = _parseFlexibleDate(vencimento);
     if (dueDate == null) return null;
-    return dueDate.add(Duration(days: graceDays));
+    final baseDate = dueDate.add(Duration(days: graceDays));
+    return _adjustToNextBusinessDay(baseDate);
   }
 
   bool _shouldPerformCharge(DateTime? chargeDate) {
@@ -1813,16 +1816,32 @@ class _ProcessingPageState extends State<ProcessingPage>
                     ),
                     _buildCopyableDataCell(
                       valueToCopy: row.dataCobranca,
-                      child: Text(
-                        row.dataCobranca,
-                        style: TextStyle(
-                          fontFamily: 'JetBrains Mono',
-                          fontSize: 13,
-                          color: row.cobrar == 'Vence hoje'
-                              ? AppColors.warning
-                              : AppColors.textSecondary,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            row.dataCobranca,
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 13,
+                              color: row.cobrar == 'Vence hoje'
+                                  ? AppColors.warning
+                                  : AppColors.textSecondary,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                          if (row.dataCobrancaTransferida) ...[
+                            const SizedBox(width: 6),
+                            const Tooltip(
+                              message: 'transferida para o próximo dia util',
+                              child: Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     _buildCopyableDataCell(
@@ -2356,6 +2375,7 @@ class OutputRow {
     required this.vencimento,
     required this.prazoCobranca,
     required this.dataCobranca,
+    required this.dataCobrancaTransferida,
     required this.ticketId,
     required this.ticketStatus,
     required this.ticketMovideskUrl,
@@ -2373,6 +2393,7 @@ class OutputRow {
   final String vencimento;
   final String prazoCobranca;
   final String dataCobranca;
+  final bool dataCobrancaTransferida;
   final String ticketId;
   final String ticketStatus;
   final String ticketMovideskUrl;
@@ -2397,6 +2418,16 @@ class ProcessingException implements Exception {
   const ProcessingException(this.message);
 
   final String message;
+}
+
+class ChargeDateResult {
+  const ChargeDateResult({
+    required this.date,
+    required this.wasTransferred,
+  });
+
+  final DateTime date;
+  final bool wasTransferred;
 }
 
 // =============================================================================
@@ -2428,6 +2459,65 @@ DateTime? _parseFlexibleDate(String raw) {
   }
 
   return null;
+}
+
+ChargeDateResult _adjustToNextBusinessDay(DateTime date) {
+  var adjusted = DateTime(date.year, date.month, date.day);
+  var wasTransferred = false;
+
+  while (_isWeekend(adjusted) || _isBrazilNationalHoliday(adjusted)) {
+    adjusted = adjusted.add(const Duration(days: 1));
+    wasTransferred = true;
+  }
+
+  return ChargeDateResult(date: adjusted, wasTransferred: wasTransferred);
+}
+
+bool _isWeekend(DateTime date) {
+  return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+}
+
+bool _isBrazilNationalHoliday(DateTime date) {
+  final d = DateTime(date.year, date.month, date.day);
+  final easter = _easterSunday(d.year);
+
+  final holidays = <DateTime>{
+    DateTime(d.year, 1, 1),
+    DateTime(d.year, 4, 21),
+    DateTime(d.year, 5, 1),
+    DateTime(d.year, 9, 7),
+    DateTime(d.year, 10, 12),
+    DateTime(d.year, 11, 2),
+    DateTime(d.year, 11, 15),
+    DateTime(d.year, 11, 20),
+    DateTime(d.year, 12, 25),
+    easter.subtract(const Duration(days: 48)),
+    easter.subtract(const Duration(days: 47)),
+    easter.subtract(const Duration(days: 2)),
+    easter,
+    easter.add(const Duration(days: 60)),
+  };
+
+  return holidays.contains(d);
+}
+
+DateTime _easterSunday(int year) {
+  final a = year % 19;
+  final b = year ~/ 100;
+  final c = year % 100;
+  final d = b ~/ 4;
+  final e = b % 4;
+  final f = (b + 8) ~/ 25;
+  final g = (b - f + 1) ~/ 3;
+  final h = (19 * a + b - d - g + 15) % 30;
+  final i = c ~/ 4;
+  final k = c % 4;
+  final l = (32 + 2 * e + 2 * i - h - k) % 7;
+  final m = (a + 11 * h + 22 * l) ~/ 451;
+  final month = (h + l - 7 * m + 114) ~/ 31;
+  final day = ((h + l - 7 * m + 114) % 31) + 1;
+
+  return DateTime(year, month, day);
 }
 
 String formattedCnpj(String digits) {
