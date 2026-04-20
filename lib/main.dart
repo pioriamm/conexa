@@ -494,6 +494,8 @@ class _ProcessingPageState extends State<ProcessingPage>
           grupo: localiza?.grupo ?? '',
           modalidade: modalidade,
           cobrar: cobrar,
+          emails: normalizeEmails(row.emails),
+          telefone: formatFirstPhone(row.telefone),
         );
 
         if (!mounted) return;
@@ -686,6 +688,8 @@ class _ProcessingPageState extends State<ProcessingPage>
       'Cobrar',
       'Grupo',
       'Modalidade',
+      'Emails',
+      'Telefone',
       'Ticket',
       'Status Ticket',
       'Ticket URL',
@@ -703,6 +707,8 @@ class _ProcessingPageState extends State<ProcessingPage>
         row.cobrar,
         row.grupo,
         row.modalidade,
+        row.emails,
+        row.telefone,
         row.ticketId,
         row.ticketStatus,
         row.ticketMovideskUrl,
@@ -1720,6 +1726,8 @@ class _ProcessingPageState extends State<ProcessingPage>
                   DataColumn(label: Text('COBRAR')),
                   DataColumn(label: Text('GRUPO')),
                   DataColumn(label: Text('MODALIDADE')),
+                  DataColumn(label: Text('EMAILS')),
+                  DataColumn(label: Text('TELEFONE')),
                   DataColumn(label: Text('TICKET')),
                 ],
               rows: List.generate(pageRows.length, (index) {
@@ -1809,6 +1817,30 @@ class _ProcessingPageState extends State<ProcessingPage>
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textPrimary,
+                      ),
+                    )),
+                    DataCell(
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: compact ? 180 : 240,
+                        ),
+                        child: Text(
+                          row.emails,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    DataCell(Text(
+                      row.telefone,
+                      style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
                       ),
                     )),
                     DataCell(_TicketCell(
@@ -2259,6 +2291,8 @@ class ConexaRow {
     required this.razaoSocialCliente,
     required this.valor,
     required this.vencimento,
+    required this.emails,
+    required this.telefone,
   });
 
   final String idCobranca;
@@ -2266,6 +2300,8 @@ class ConexaRow {
   final String razaoSocialCliente;
   final String valor;
   final String vencimento;
+  final String emails;
+  final String telefone;
 }
 
 class OutputRow {
@@ -2283,6 +2319,8 @@ class OutputRow {
     required this.grupo,
     required this.modalidade,
     required this.cobrar,
+    required this.emails,
+    required this.telefone,
   });
 
   final String idCobranca;
@@ -2298,6 +2336,8 @@ class OutputRow {
   final String grupo;
   final String modalidade;
   final String cobrar;
+  final String emails;
+  final String telefone;
 }
 
 class MovideskTicketInfo {
@@ -2352,6 +2392,38 @@ String formattedCnpj(String digits) {
     return digits;
   }
   return '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12, 14)}';
+}
+
+String normalizeEmails(String input) {
+  final matches = RegExp(
+    r'[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}',
+    caseSensitive: false,
+  ).allMatches(input);
+
+  final emails = <String>{};
+  for (final match in matches) {
+    final email = match.group(0);
+    if (email == null) continue;
+    emails.add(email.toLowerCase());
+  }
+
+  return emails.join('; ');
+}
+
+String formatFirstPhone(String input) {
+  if (input.trim().isEmpty) return '';
+
+  final match = RegExp(r'\d{10,11}').firstMatch(digitsOnly(input));
+  final digits = match?.group(0) ?? '';
+
+  if (digits.length == 11) {
+    return '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
+  }
+  if (digits.length == 10) {
+    return '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6, 10)}';
+  }
+
+  return '';
 }
 
 // =============================================================================
@@ -2462,14 +2534,18 @@ Future<List<ConexaRow>> parseConexaBytes(
       _findColumn(header, ['Razão Social Cliente', 'razaosocial']);
   final valorCol = _findColumn(header, ['Valor']);
   final vencimentoCol = _findColumn(header, ['Vencimento']);
+  final emailsCol = _findColumn(header, ['Emails', 'E-mails', 'Email']);
+  final telefoneCol = _findColumn(header, ['Telefone', 'Telefones', 'Celular']);
 
   if (idCol == null ||
       cpfCnpjCol == null ||
       razaoCol == null ||
       valorCol == null ||
-      vencimentoCol == null) {
+      vencimentoCol == null ||
+      emailsCol == null ||
+      telefoneCol == null) {
     throw const ProcessingException(
-      'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
+      'A planilha Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor, Vencimento, Emails e Telefone.',
     );
   }
 
@@ -2494,6 +2570,8 @@ Future<List<ConexaRow>> parseConexaBytes(
           razaoSocialCliente: _cellValue(row, razaoCol),
           valor: _cellValue(row, valorCol),
           vencimento: _cellValue(row, vencimentoCol),
+          emails: _cellValue(row, emailsCol),
+          telefone: _cellValue(row, telefoneCol),
         ),
       );
     } catch (_) {
@@ -2689,14 +2767,19 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
       _csvFindColumn(header, ['Razão Social Cliente', 'razaosocial']);
   final valorCol = _csvFindColumn(header, ['Valor']);
   final vencimentoCol = _csvFindColumn(header, ['Vencimento']);
+  final emailsCol = _csvFindColumn(header, ['Emails', 'E-mails', 'Email']);
+  final telefoneCol =
+      _csvFindColumn(header, ['Telefone', 'Telefones', 'Celular']);
 
   if (idCol == null ||
       cpfCnpjCol == null ||
       razaoCol == null ||
       valorCol == null ||
-      vencimentoCol == null) {
+      vencimentoCol == null ||
+      emailsCol == null ||
+      telefoneCol == null) {
     throw const ProcessingException(
-      'O CSV da Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor e Vencimento.',
+      'O CSV da Conexa precisa conter: ID da Cobrança, CPF/CNPJ, Razão Social Cliente, Valor, Vencimento, Emails e Telefone.',
     );
   }
 
@@ -2722,6 +2805,8 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
           razaoSocialCliente: _csvField(row, razaoCol),
           valor: _csvField(row, valorCol),
           vencimento: _csvField(row, vencimentoCol),
+          emails: _csvField(row, emailsCol),
+          telefone: _csvField(row, telefoneCol),
         ),
       );
     } catch (_) {
