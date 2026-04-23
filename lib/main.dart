@@ -2898,18 +2898,21 @@ class _CommissionsPageState extends State<CommissionsPage> {
           : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
 
       for (final row in cobrancaRows) {
-        final mapped = vendaMap[row.idCliente];
+        final normalizedClienteId = normalizeClientId(row.idCliente);
+        final mapped = vendaMap[normalizedClienteId];
         row.servicoItem = mapped ?? '';
-        final detalhes = clientesDetalhes[row.idCliente];
+        final detalhes = clientesDetalhes[normalizedClienteId];
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
+        row.issRetido = detalhes?.issRetido ?? '';
+        row.quantidadeCnpj = detalhes?.quantidadeCnpj ?? '';
         row.customSistema = detalhes?.customSistema ?? '';
       }
 
       if (!mounted) return;
       setState(() {
-        _rows = cobrancaRows;
+        _rows = [..._rows, ...cobrancaRows];
         _currentPage = 0;
         _status = 'Processamento concluído (${_rows.length} linhas).';
         _loading = false;
@@ -2957,7 +2960,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Carregue as planilhas Admin Venda, Admin Cobrança e o relatório complementar para preencher Serviço/Item, Grupo, Vendedor, Parceiro e Custom Sistema.',
+                'Carregue as planilhas Admin Venda, Admin Cobrança e Tenex completa para preencher Serviço/Item, Grupo, Vendedor, Parceiro, ISS Retido, Quantidade CNPJ e Custom Sistema.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -3326,19 +3329,19 @@ class _CommissionsPageState extends State<CommissionsPage> {
                   rows: rows.map((row) {
                     final values = row.toValues();
                     return DataRow(
-                      cells: values
-                          .map(
-                            (value) => DataCell(
-                              SizedBox(
-                                width: 180,
-                                child: Text(
-                                  value,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                      cells: List.generate(values.length, (index) {
+                        final column = AdminCobrancaRow.columns[index];
+                        final value = _formatGridValue(column, values[index]);
+                        return DataCell(
+                          SizedBox(
+                            width: 180,
+                            child: Text(
+                              value,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          )
-                          .toList(),
+                          ),
+                        );
+                      }),
                     );
                   }).toList(),
                   ),
@@ -3417,6 +3420,21 @@ class _CommissionsPageState extends State<CommissionsPage> {
         ],
       ),
     );
+  }
+
+  String _formatGridValue(String column, String value) {
+    const moneyColumns = {
+      'Faturamento',
+      'Valor Bruto',
+      'Valor',
+      'Valor Atual',
+      'Valor Recebido',
+      'Valor Desconto',
+      'Valor NFSe com Desconto',
+    };
+
+    if (!moneyColumns.contains(column)) return value;
+    return formatReal(value);
   }
 
   String _formatInt(int value) {
@@ -3517,6 +3535,8 @@ class AdminCobrancaRow {
   set grupo(String value) => values['Grupo'] = value;
   set vendedor(String value) => values['Vendedor'] = value;
   set parceiro(String value) => values['Parceiro'] = value;
+  set issRetido(String value) => values['ISS Retido'] = value;
+  set quantidadeCnpj(String value) => values['Quantidade CNPJ'] = value;
   set customSistema(String value) => values['Custom Sistema'] = value;
 
   static const List<String> columns = [
@@ -3561,6 +3581,8 @@ class AdminCobrancaRow {
     'Grupo',
     'Vendedor',
     'Parceiro',
+    'ISS Retido',
+    'Quantidade CNPJ',
     'Custom Sistema',
   ];
 
@@ -3603,6 +3625,8 @@ class ClientesDetalhesRow {
     required this.grupo,
     required this.vendedor,
     required this.parceiro,
+    required this.issRetido,
+    required this.quantidadeCnpj,
     required this.customSistema,
   });
 
@@ -3610,6 +3634,8 @@ class ClientesDetalhesRow {
   final String grupo;
   final String vendedor;
   final String parceiro;
+  final String issRetido;
+  final String quantidadeCnpj;
   final String customSistema;
 }
 
@@ -3954,7 +3980,7 @@ Future<Map<String, String>> parseAdminVendaBytes(Uint8List bytes) async {
   final mapped = <String, String>{};
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
-    final clienteId = _cellValue(row, clienteIdCol).trim();
+    final clienteId = normalizeClientId(_cellValue(row, clienteIdCol));
     if (clienteId.isEmpty) continue;
     final servicoItem = _mapServicoItem(_cellValue(row, servicoItemCol));
     if (servicoItem.isEmpty) continue;
@@ -4021,6 +4047,9 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   final grupoCol = _findColumn(header, ['Grupo']);
   final vendedorCol = _findColumn(header, ['Vendedor']);
   final parceiroCol = _findColumn(header, ['Parceiro']);
+  final issRetidoCol = _findColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
+  final quantidadeCnpjCol =
+      _findColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
   final customSistemaCol =
       _findColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
 
@@ -4037,13 +4066,16 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   final mapped = <String, ClientesDetalhesRow>{};
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
-    final id = _cellValue(row, idCol).trim();
+    final id = normalizeClientId(_cellValue(row, idCol));
     if (id.isEmpty) continue;
     mapped[id] = ClientesDetalhesRow(
       id: id,
       grupo: _cellValue(row, grupoCol),
       vendedor: _cellValue(row, vendedorCol),
       parceiro: _cellValue(row, parceiroCol),
+      issRetido: issRetidoCol == null ? '' : _cellValue(row, issRetidoCol),
+      quantidadeCnpj:
+          quantidadeCnpjCol == null ? '' : _cellValue(row, quantidadeCnpjCol),
       customSistema: _cellValue(row, customSistemaCol),
     );
   }
@@ -4308,7 +4340,7 @@ Future<Map<String, String>> parseAdminVendaCsvBytes(Uint8List bytes) async {
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
     final row = _parseCsvLine(lines[i], sep);
-    final clienteId = _csvField(row, clienteIdCol).trim();
+    final clienteId = normalizeClientId(_csvField(row, clienteIdCol));
     if (clienteId.isEmpty) continue;
     final servicoItem = _mapServicoItem(_csvField(row, servicoItemCol));
     if (servicoItem.isEmpty) continue;
@@ -4371,6 +4403,10 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   final grupoCol = _csvFindColumn(header, ['Grupo']);
   final vendedorCol = _csvFindColumn(header, ['Vendedor']);
   final parceiroCol = _csvFindColumn(header, ['Parceiro']);
+  final issRetidoCol =
+      _csvFindColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
+  final quantidadeCnpjCol =
+      _csvFindColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
   final customSistemaCol =
       _csvFindColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
 
@@ -4388,13 +4424,16 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
     final row = _parseCsvLine(lines[i], sep);
-    final id = _csvField(row, idCol).trim();
+    final id = normalizeClientId(_csvField(row, idCol));
     if (id.isEmpty) continue;
     mapped[id] = ClientesDetalhesRow(
       id: id,
       grupo: _csvField(row, grupoCol),
       vendedor: _csvField(row, vendedorCol),
       parceiro: _csvField(row, parceiroCol),
+      issRetido: issRetidoCol == null ? '' : _csvField(row, issRetidoCol),
+      quantidadeCnpj:
+          quantidadeCnpjCol == null ? '' : _csvField(row, quantidadeCnpjCol),
       customSistema: _csvField(row, customSistemaCol),
     );
   }
@@ -4451,6 +4490,20 @@ String _cellValue(List<excel.Data?> row, int index) {
   } catch (_) {
     return '';
   }
+}
+
+
+String normalizeClientId(String input) {
+  final trimmed = input.trim();
+  if (trimmed.isEmpty) return '';
+
+  final number = double.tryParse(trimmed.replaceAll(',', '.'));
+  if (number != null) {
+    return number.toStringAsFixed(0);
+  }
+
+  final digits = digitsOnly(trimmed);
+  return digits.isNotEmpty ? digits : trimmed;
 }
 
 /// Converte um valor em texto para o padrão brasileiro "R$ 1.234,56".
