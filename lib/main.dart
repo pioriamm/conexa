@@ -321,6 +321,8 @@ class _ProcessingPageState extends State<ProcessingPage>
   Timer? _processTimer;
   int _currentPage = 0;
   static const int _pageSize = 20;
+  final ScrollController _resultsHorizontalScrollController =
+      ScrollController();
   static const _movideskToken = '0e5c4256-d385-4ec3-a60d-b035c812ef7c';
   static const MovideskPersonInfo _fallbackMovideskPerson = MovideskPersonInfo(
     id: '43',
@@ -361,6 +363,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   void dispose() {
     _processTimer?.cancel();
     _cnpjFilterController.dispose();
+    _resultsHorizontalScrollController.dispose();
     _statusFadeController.dispose();
     _statusSpinController.dispose();
     super.dispose();
@@ -2088,11 +2091,17 @@ class _ProcessingPageState extends State<ProcessingPage>
         final compact = tableWidth < 1200;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: tableWidth),
-              child: DataTable(
+          child: Scrollbar(
+            controller: _resultsHorizontalScrollController,
+            thumbVisibility: true,
+            trackVisibility: true,
+            interactive: true,
+            child: SingleChildScrollView(
+              controller: _resultsHorizontalScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: tableWidth),
+                child: DataTable(
                 headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
                 headingTextStyle: const TextStyle(
                   fontFamily: 'Inter',
@@ -2127,7 +2136,7 @@ class _ProcessingPageState extends State<ProcessingPage>
                   DataColumn(label: Text('TELEFONE')),
                   DataColumn(label: Text('TICKET')),
                 ],
-              rows: List.generate(pageRows.length, (index) {
+                  rows: List.generate(pageRows.length, (index) {
                 final row = pageRows[index];
                 final zebra = index.isOdd;
                 return DataRow(
@@ -2296,7 +2305,8 @@ class _ProcessingPageState extends State<ProcessingPage>
                     ),
                   ],
                 );
-              }),
+                  }),
+                ),
               ),
             ),
           ),
@@ -2762,6 +2772,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
   bool _hasError = false;
   List<AdminCobrancaRow> _rows = [];
   int _currentPage = 0;
+  final ScrollController _commissionsHorizontalScrollController =
+      ScrollController();
+
+  @override
+  void dispose() {
+    _commissionsHorizontalScrollController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickAdminVenda() async {
     await _pickAndStore(
@@ -3239,12 +3257,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final tableWidth = constraints.maxWidth;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: tableWidth),
-              child: SingleChildScrollView(
-                child: DataTable(
+          child: Scrollbar(
+            controller: _commissionsHorizontalScrollController,
+            thumbVisibility: true,
+            trackVisibility: true,
+            interactive: true,
+            child: SingleChildScrollView(
+              controller: _commissionsHorizontalScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: tableWidth),
+                child: SingleChildScrollView(
+                  child: DataTable(
                   headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
                   headingTextStyle: const TextStyle(
                     fontFamily: 'Inter',
@@ -3271,6 +3295,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                           .toList(),
                     );
                   }).toList(),
+                  ),
                 ),
               ),
             ),
