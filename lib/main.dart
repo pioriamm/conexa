@@ -153,12 +153,138 @@ class ConexaApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const ProcessingPage(),
+      home: const _AppShell(),
     );
   }
 }
 
 enum StepStatus { pendente, carregando, pronto, processando }
+enum AppSection { fluxoCobranca, comissoes }
+
+class _AppShell extends StatefulWidget {
+  const _AppShell();
+
+  @override
+  State<_AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<_AppShell> {
+  AppSection _current = AppSection.fluxoCobranca;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
+        child: Row(
+          children: [
+            Container(
+              width: 260,
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(
+                  right: BorderSide(color: AppColors.border),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  const ListTile(
+                    title: Text(
+                      'Conexa',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    subtitle: Text('Navegação'),
+                  ),
+                  const SizedBox(height: 12),
+                  _SidebarButton(
+                    icon: Icons.account_tree_outlined,
+                    label: 'Fluxo de cobrança',
+                    selected: _current == AppSection.fluxoCobranca,
+                    onTap: () => setState(() {
+                      _current = AppSection.fluxoCobranca;
+                    }),
+                  ),
+                  _SidebarButton(
+                    icon: Icons.request_quote_outlined,
+                    label: 'Comissões',
+                    selected: _current == AppSection.comissoes,
+                    onTap: () => setState(() {
+                      _current = AppSection.comissoes;
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: _current == AppSection.fluxoCobranca ? 0 : 1,
+                children: const [
+                  ProcessingPage(),
+                  CommissionsPage(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarButton extends StatelessWidget {
+  const _SidebarButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: selected ? AppColors.primarySoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: selected ? AppColors.primary : AppColors.textSecondary,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: selected ? AppColors.primary : AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // =============================================================================
 // Processing page
@@ -2616,6 +2742,250 @@ class _PageIconButton extends StatelessWidget {
   }
 }
 
+class CommissionsPage extends StatefulWidget {
+  const CommissionsPage({super.key});
+
+  @override
+  State<CommissionsPage> createState() => _CommissionsPageState();
+}
+
+class _CommissionsPageState extends State<CommissionsPage> {
+  String? _adminVendaName;
+  String? _adminCobrancaName;
+  Uint8List? _adminVendaBytes;
+  Uint8List? _adminCobrancaBytes;
+  bool _adminVendaIsCsv = false;
+  bool _adminCobrancaIsCsv = false;
+  bool _loading = false;
+  String _status = '';
+  bool _hasError = false;
+  List<AdminCobrancaRow> _rows = [];
+
+  Future<void> _pickAdminVenda() async {
+    await _pickAndStore(
+      onPicked: (name, bytes, isCsv) async {
+        final parsed = isCsv
+            ? await parseAdminVendaCsvBytes(bytes)
+            : await parseAdminVendaBytes(bytes);
+        setState(() {
+          _adminVendaName = name;
+          _adminVendaBytes = bytes;
+          _adminVendaIsCsv = isCsv;
+          _status = 'Admin Venda carregada (${parsed.length} clientes).';
+        });
+      },
+    );
+  }
+
+  Future<void> _pickAdminCobranca() async {
+    await _pickAndStore(
+      onPicked: (name, bytes, isCsv) async {
+        final parsed = isCsv
+            ? await parseAdminCobrancaCsvBytes(bytes)
+            : await parseAdminCobrancaBytes(bytes);
+        setState(() {
+          _adminCobrancaName = name;
+          _adminCobrancaBytes = bytes;
+          _adminCobrancaIsCsv = isCsv;
+          _status = 'Admin Cobrança carregada (${parsed.length} linhas).';
+        });
+      },
+    );
+  }
+
+  Future<void> _pickAndStore({
+    required Future<void> Function(String name, Uint8List bytes, bool isCsv)
+        onPicked,
+  }) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx', 'csv'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    if (file.bytes == null) {
+      setState(() {
+        _hasError = true;
+        _status = 'Não foi possível ler o arquivo selecionado.';
+      });
+      return;
+    }
+
+    final isCsv = (file.extension ?? '').toLowerCase() == 'csv' ||
+        file.name.toLowerCase().endsWith('.csv');
+
+    try {
+      await onPicked(file.name, file.bytes!, isCsv);
+      if (!mounted) return;
+      setState(() {
+        _hasError = false;
+      });
+    } on ProcessingException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hasError = true;
+        _status = e.message;
+      });
+    }
+  }
+
+  Future<void> _process() async {
+    if (_adminVendaBytes == null || _adminCobrancaBytes == null) {
+      setState(() {
+        _hasError = true;
+        _status = 'Envie as duas planilhas antes de processar.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _hasError = false;
+      _status = 'Processando planilhas...';
+    });
+
+    try {
+      final vendaMap = _adminVendaIsCsv
+          ? await parseAdminVendaCsvBytes(_adminVendaBytes!)
+          : await parseAdminVendaBytes(_adminVendaBytes!);
+      final cobrancaRows = _adminCobrancaIsCsv
+          ? await parseAdminCobrancaCsvBytes(_adminCobrancaBytes!)
+          : await parseAdminCobrancaBytes(_adminCobrancaBytes!);
+
+      for (final row in cobrancaRows) {
+        final mapped = vendaMap[row.idCliente];
+        row.servicoItem = mapped ?? '';
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _rows = cobrancaRows;
+        _status = 'Processamento concluído (${_rows.length} linhas).';
+        _loading = false;
+      });
+    } on ProcessingException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _hasError = true;
+        _status = e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Comissões',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Carregue as planilhas Conexa - Admin Venda e Conexa - Admin Cobrança para preencher a coluna Serviço/Item.',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _loading ? null : _pickAdminVenda,
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: Text(_adminVendaName == null
+                        ? 'Upload Admin Venda'
+                        : 'Trocar Admin Venda'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _loading ? null : _pickAdminCobranca,
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: Text(_adminCobrancaName == null
+                        ? 'Upload Admin Cobrança'
+                        : 'Trocar Admin Cobrança'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _loading ? null : _process,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.auto_awesome_outlined),
+                    label: const Text('Processar Comissões'),
+                  ),
+                ],
+              ),
+              if (_status.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _status,
+                  style: TextStyle(
+                    color: _hasError ? AppColors.danger : AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: _rows.isEmpty
+                    ? const Center(
+                        child: Text('Nenhum dado processado ainda.'),
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          border: Border.all(color: AppColors.border),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SingleChildScrollView(
+                            child: DataTable(
+                              columns: AdminCobrancaRow.columns
+                                  .map((c) => DataColumn(label: Text(c)))
+                                  .toList(),
+                              rows: _rows.map((row) {
+                                final values = row.toValues();
+                                return DataRow(
+                                  cells: values
+                                      .map((value) => DataCell(
+                                            SizedBox(
+                                              width: 180,
+                                              child: Text(
+                                                value,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ))
+                                      .toList(),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // =============================================================================
 // Modelos
 // =============================================================================
@@ -2688,6 +3058,61 @@ class OutputRow {
   final String cobrar;
   final String emails;
   final String telefone;
+}
+
+class AdminCobrancaRow {
+  AdminCobrancaRow(this.values);
+
+  final Map<String, String> values;
+
+  String get idCliente => values['ID Cliente'] ?? '';
+
+  String get servicoItem => values['Serviço/Item'] ?? '';
+
+  set servicoItem(String value) => values['Serviço/Item'] = value;
+
+  static const List<String> columns = [
+    'ID da Cobrança',
+    'Faturamento',
+    'ID Cliente',
+    'CPF/CNPJ',
+    'Razão Social Cliente',
+    'Nome Fantasia Cliente',
+    'Telefone',
+    'Emails',
+    'Emails Recado',
+    'Telefones Pessoas',
+    'Emails Pessoas',
+    'Endereços Pessoas',
+    'Plano(s) Contratado(s)',
+    'Tipo',
+    'Status',
+    'Parcela',
+    'Valor Bruto',
+    'Valor',
+    'Valor Atual',
+    'Valor Recebido',
+    'Valor Desconto',
+    'Valor NFSe com Desconto',
+    'Vencimento',
+    'Quitação',
+    'Competência',
+    'Visu.',
+    'Rem.',
+    'Status Registro no Banco',
+    'Emissão',
+    'Data Crédito',
+    'Cód. Remessa',
+    'Conta',
+    'Retém ISS',
+    'Número Nota Fiscal',
+    'Data de operação da quitação',
+    'Data cancelamento',
+    'Observações',
+    'Serviço/Item',
+  ];
+
+  List<String> toValues() => columns.map((c) => values[c] ?? '').toList();
 }
 
 class MovideskTicketInfo {
@@ -3016,6 +3441,100 @@ Future<List<ConexaRow>> parseConexaBytes(
   return rows;
 }
 
+const Map<String, String> _servicoItemDePara = {
+  'cobranca parceiro': 'Cobrança Parceiro',
+  'mensal': 'Mensal',
+  'treinamento por hora': 'Treinamento por Hora',
+  'taxa adesao': 'Taxa Adesão',
+  'recorrencia': 'Mensal',
+  'treinamento especializado': 'Treinamento Especializado',
+  '1 recorrencia': '1º recorrencia',
+  '1o recorrencia': '1º recorrencia',
+  '1º recorrencia': '1º recorrencia',
+};
+
+String _mapServicoItem(String raw) {
+  final normalized = normalizeKey(raw).replaceAll('º', 'o');
+  for (final entry in _servicoItemDePara.entries) {
+    if (normalized.contains(normalizeKey(entry.key))) {
+      return entry.value;
+    }
+  }
+  return raw.trim();
+}
+
+Future<Map<String, String>> parseAdminVendaBytes(Uint8List bytes) async {
+  await _yield();
+  final file = _decodeExcel(bytes);
+  if (file.tables.isEmpty) {
+    throw const ProcessingException('A planilha Admin Venda está vazia.');
+  }
+  final table = file.tables.values.first;
+  if (table.rows.isEmpty) {
+    throw const ProcessingException('A planilha Admin Venda está vazia.');
+  }
+
+  final header = _headerMap(table.rows.first);
+  final clienteIdCol = _findColumn(header, ['Cliente ID', 'ID Cliente']);
+  final servicoItemCol = _findColumn(header, ['Serviço/Item', 'Servico/Item']);
+  if (clienteIdCol == null || servicoItemCol == null) {
+    throw const ProcessingException(
+      'A planilha Admin Venda precisa conter as colunas Cliente ID e Serviço/Item.',
+    );
+  }
+
+  final mapped = <String, String>{};
+  for (var i = 1; i < table.rows.length; i++) {
+    final row = table.rows[i];
+    final clienteId = _cellValue(row, clienteIdCol).trim();
+    if (clienteId.isEmpty) continue;
+    final servicoItem = _mapServicoItem(_cellValue(row, servicoItemCol));
+    if (servicoItem.isEmpty) continue;
+    mapped[clienteId] = servicoItem;
+  }
+  return mapped;
+}
+
+Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
+  await _yield();
+  final file = _decodeExcel(bytes);
+  if (file.tables.isEmpty) {
+    throw const ProcessingException('A planilha Admin Cobrança está vazia.');
+  }
+  final table = file.tables.values.first;
+  if (table.rows.isEmpty) {
+    throw const ProcessingException('A planilha Admin Cobrança está vazia.');
+  }
+
+  final header = _headerMap(table.rows.first);
+  final columnIndexes = <String, int>{};
+  for (final col in AdminCobrancaRow.columns) {
+    final index = _findColumn(header, [col]);
+    if (index != null) {
+      columnIndexes[col] = index;
+    }
+  }
+
+  if (!columnIndexes.containsKey('ID Cliente')) {
+    throw const ProcessingException(
+      'A planilha Admin Cobrança precisa conter a coluna ID Cliente.',
+    );
+  }
+
+  final rows = <AdminCobrancaRow>[];
+  for (var i = 1; i < table.rows.length; i++) {
+    final source = table.rows[i];
+    final values = <String, String>{};
+    for (final col in AdminCobrancaRow.columns) {
+      final index = columnIndexes[col];
+      values[col] = index == null ? '' : _cellValue(source, index);
+    }
+    if ((values['ID Cliente'] ?? '').trim().isEmpty) continue;
+    rows.add(AdminCobrancaRow(values));
+  }
+  return rows;
+}
+
 // =============================================================================
 // Parsing CSV (streaming linha-a-linha, memória constante)
 // =============================================================================
@@ -3248,6 +3767,76 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
   }
 
   onProgress?.call(total, total);
+  return rows;
+}
+
+Future<Map<String, String>> parseAdminVendaCsvBytes(Uint8List bytes) async {
+  await _yield();
+  final text = _decodeCsvText(bytes);
+  final sep = _detectCsvSeparator(text);
+  final lines = _csvSplitLines(text);
+  if (lines.isEmpty) {
+    throw const ProcessingException('CSV Admin Venda está vazio.');
+  }
+
+  final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
+  final clienteIdCol = _csvFindColumn(header, ['Cliente ID', 'ID Cliente']);
+  final servicoItemCol =
+      _csvFindColumn(header, ['Serviço/Item', 'Servico/Item']);
+  if (clienteIdCol == null || servicoItemCol == null) {
+    throw const ProcessingException(
+      'O CSV Admin Venda precisa conter as colunas Cliente ID e Serviço/Item.',
+    );
+  }
+
+  final mapped = <String, String>{};
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    final row = _parseCsvLine(lines[i], sep);
+    final clienteId = _csvField(row, clienteIdCol).trim();
+    if (clienteId.isEmpty) continue;
+    final servicoItem = _mapServicoItem(_csvField(row, servicoItemCol));
+    if (servicoItem.isEmpty) continue;
+    mapped[clienteId] = servicoItem;
+  }
+  return mapped;
+}
+
+Future<List<AdminCobrancaRow>> parseAdminCobrancaCsvBytes(
+  Uint8List bytes,
+) async {
+  await _yield();
+  final text = _decodeCsvText(bytes);
+  final sep = _detectCsvSeparator(text);
+  final lines = _csvSplitLines(text);
+  if (lines.isEmpty) {
+    throw const ProcessingException('CSV Admin Cobrança está vazio.');
+  }
+
+  final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
+  final columnIndexes = <String, int>{};
+  for (final col in AdminCobrancaRow.columns) {
+    final index = _csvFindColumn(header, [col]);
+    if (index != null) columnIndexes[col] = index;
+  }
+  if (!columnIndexes.containsKey('ID Cliente')) {
+    throw const ProcessingException(
+      'O CSV Admin Cobrança precisa conter a coluna ID Cliente.',
+    );
+  }
+
+  final rows = <AdminCobrancaRow>[];
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    final source = _parseCsvLine(lines[i], sep);
+    final values = <String, String>{};
+    for (final col in AdminCobrancaRow.columns) {
+      final index = columnIndexes[col];
+      values[col] = index == null ? '' : _csvField(source, index);
+    }
+    if ((values['ID Cliente'] ?? '').trim().isEmpty) continue;
+    rows.add(AdminCobrancaRow(values));
+  }
   return rows;
 }
 
