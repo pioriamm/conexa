@@ -463,6 +463,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     try {
       final localizaMap = _localizaRows!;
       final conexaRows = _conexaRows!;
+      final openedTicketsByCnpj = <String, MovideskTicketInfo>{};
 
       for (final row in conexaRows) {
         final cnpjDigits = digitsOnly(row.cpfCnpj);
@@ -475,14 +476,21 @@ class _ProcessingPageState extends State<ProcessingPage>
         final dataCobrancaDate = dataCobranca?.date;
         final cobrar = _buildChargeLabel(dataCobrancaDate);
 
-        MovideskTicketInfo? ticketInfo;
-        try {
-          ticketInfo = await _fetchMovideskTicketInfo(
-            formattedCnpj(cnpjDigits),
-            _movideskToken,
-          );
-        } catch (_) {
-          ticketInfo = null;
+        final dataVencimento = _parseFlexibleDate(row.vencimento);
+
+        MovideskTicketInfo? ticketInfo = openedTicketsByCnpj[cnpjDigits];
+        if (ticketInfo == null) {
+          try {
+            ticketInfo = await _fetchMovideskTicketInfo(
+              formattedCnpj(cnpjDigits),
+              _movideskToken,
+            );
+            if (ticketInfo?.id != null) {
+              openedTicketsByCnpj[cnpjDigits] = ticketInfo!;
+            }
+          } catch (_) {
+            ticketInfo = null;
+          }
         }
 
         if (cobrar == 'Vence hoje' && ticketInfo?.id == null) {
@@ -500,9 +508,12 @@ class _ProcessingPageState extends State<ProcessingPage>
                   idCobranca: row.idCobranca,
                   email: normalizeEmails(row.emails),
                   telefone: formatFirstPhone(row.telefone),
-                  dataCobranca: dataCobrancaDate,
+                  dataVencimento: dataVencimento,
                 ) ??
                 ticketInfo;
+            if (ticketInfo?.id != null) {
+              openedTicketsByCnpj[cnpjDigits] = ticketInfo!;
+            }
           } catch (_) {
             // Mantém a linha sem ticket caso a criação falhe.
           }
@@ -693,7 +704,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     required String idCobranca,
     required String email,
     required String telefone,
-    required DateTime? dataCobranca,
+    required DateTime? dataVencimento,
   }) async {
     if (token.isEmpty) return null;
     final uri = Uri.https('api.movidesk.com', '/public/v1/tickets', {
@@ -752,7 +763,7 @@ class _ProcessingPageState extends State<ProcessingPage>
           'customFieldId': 240980,
           'customFieldRuleId': 77836,
           'line': 1,
-          'value': _formatMovideskDate(dataCobranca),
+          'value': _formatMovideskDate(dataVencimento),
         },
       ],
       'actions': [
