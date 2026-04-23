@@ -195,6 +195,12 @@ class _ProcessingPageState extends State<ProcessingPage>
   int _currentPage = 0;
   static const int _pageSize = 20;
   static const _movideskToken = '0e5c4256-d385-4ec3-a60d-b035c812ef7c';
+  static const MovideskPersonInfo _fallbackMovideskPerson = MovideskPersonInfo(
+    id: '43',
+    businessName: 'ALIANÇA TECNOLOGIA',
+    personType: 2,
+    profileType: 2,
+  );
   late final AnimationController _statusFadeController;
   late final AnimationController _statusSpinController;
 
@@ -479,6 +485,29 @@ class _ProcessingPageState extends State<ProcessingPage>
           ticketInfo = null;
         }
 
+        if (cobrar == 'Vence hoje' && ticketInfo?.id == null) {
+          try {
+            final person = await _fetchMovideskPersonByBusinessName(
+                  localiza?.grupo ?? '',
+                  _movideskToken,
+                ) ??
+                _fallbackMovideskPerson;
+            ticketInfo = await _createMovideskTicket(
+                  token: _movideskToken,
+                  person: person,
+                  cnpj: formattedCnpj(cnpjDigits),
+                  razaoSocial: row.razaoSocialCliente,
+                  idCobranca: row.idCobranca,
+                  email: normalizeEmails(row.emails),
+                  telefone: formatFirstPhone(row.telefone),
+                  dataCobranca: dataCobrancaDate,
+                ) ??
+                ticketInfo;
+          } catch (_) {
+            // Mantém a linha sem ticket caso a criação falhe.
+          }
+        }
+
         final output = OutputRow(
           idCobranca: row.idCobranca,
           cpfCnpj: row.cpfCnpj,
@@ -611,6 +640,153 @@ class _ProcessingPageState extends State<ProcessingPage>
       }
     }
     return null;
+  }
+
+  Future<MovideskPersonInfo?> _fetchMovideskPersonByBusinessName(
+    String businessName,
+    String token,
+  ) async {
+    final trimmed = businessName.trim();
+    if (token.isEmpty || trimmed.isEmpty) {
+      return null;
+    }
+
+    final escapedBusinessName = trimmed.replaceAll("'", "''");
+    final uri = Uri.https('api.movidesk.com', '/public/v1/persons', {
+      'token': token,
+      r'$select': 'id,businessName,personType,profileType',
+      r'$filter': "businessName eq '$escapedBusinessName'",
+      r'$top': '1',
+    });
+
+    final response = await http.get(uri);
+    if (response.statusCode != 200 || response.body.trim().isEmpty) {
+      return null;
+    }
+
+    final dynamic data = jsonDecode(response.body);
+    if (data is! List || data.isEmpty) {
+      return null;
+    }
+
+    final first = data.first;
+    if (first is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final id = first['id']?.toString() ?? '';
+    if (id.isEmpty) return null;
+
+    return MovideskPersonInfo(
+      id: id,
+      businessName: first['businessName']?.toString() ?? trimmed,
+      personType: (first['personType'] as num?)?.toInt() ?? 2,
+      profileType: (first['profileType'] as num?)?.toInt() ?? 2,
+    );
+  }
+
+  Future<MovideskTicketInfo?> _createMovideskTicket({
+    required String token,
+    required MovideskPersonInfo person,
+    required String cnpj,
+    required String razaoSocial,
+    required String idCobranca,
+    required String email,
+    required String telefone,
+    required DateTime? dataCobranca,
+  }) async {
+    if (token.isEmpty) return null;
+    final uri = Uri.https('api.movidesk.com', '/public/v1/tickets', {
+      'token': token,
+    });
+
+    final payload = <String, dynamic>{
+      'subject': '#Cobrança - $razaoSocial',
+      'type': 2,
+      'origin': 2,
+      'status': 'Iniciar Atendimento',
+      'category': '03. Financeiro',
+      'serviceThirdLevelId': 800889,
+      'createdBy': {'id': '1382851390'},
+      'owner': {'id': '98745869'},
+      'ownerTeam': 'Financeiro',
+      'clients': [
+        {
+          'id': person.id,
+          'personType': person.personType,
+          'profileType': person.profileType,
+        }
+      ],
+      'customFieldValues': [
+        {
+          'customFieldId': 90531,
+          'customFieldRuleId': 82697,
+          'line': 1,
+          'value': cnpj,
+        },
+        {
+          'customFieldId': 91806,
+          'customFieldRuleId': 82697,
+          'line': 1,
+          'value': razaoSocial,
+        },
+        {
+          'customFieldId': 92031,
+          'customFieldRuleId': 77836,
+          'line': 1,
+          'value': idCobranca,
+        },
+        {
+          'customFieldId': 21504,
+          'customFieldRuleId': 18775,
+          'line': 1,
+          'value': email,
+        },
+        {
+          'customFieldId': 21503,
+          'customFieldRuleId': 18775,
+          'line': 1,
+          'value': telefone,
+        },
+        {
+          'customFieldId': 240980,
+          'customFieldRuleId': 77836,
+          'line': 1,
+          'value': _formatMovideskDate(dataCobranca),
+        },
+      ],
+      'actions': [
+        {
+          'type': 2,
+          'description': 'ticket criado via automação',
+        }
+      ],
+    };
+
+    final response = await http.post(
+      uri,
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      return null;
+    }
+    if (response.body.trim().isEmpty) return null;
+
+    final dynamic data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) return null;
+    final id = (data['id'] as num?)?.toInt();
+    if (id == null) return null;
+    final status = data['status']?.toString() ?? 'Iniciar Atendimento';
+    return MovideskTicketInfo(id: id, status: status);
+  }
+
+  String _formatMovideskDate(DateTime? date) {
+    if (date == null) return '';
+    final yyyy = date.year.toString().padLeft(4, '0');
+    final mm = date.month.toString().padLeft(2, '0');
+    final dd = date.day.toString().padLeft(2, '0');
+    return '$yyyy-$mm-$dd 00:00:00';
   }
 
   bool _isWhiteLabel(String modalidade) {
@@ -2261,6 +2437,8 @@ class _TicketCell extends StatelessWidget {
         ),
       );
     }
+    final hasStatus = ticketStatus.trim().isNotEmpty;
+    final ticketColor = hasStatus ? AppColors.successStrong : AppColors.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       child: Row(
@@ -2268,22 +2446,22 @@ class _TicketCell extends StatelessWidget {
         children: [
           Text(
             '#$ticketId',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'JetBrains Mono',
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.primary,
+              color: ticketColor,
             ),
           ),
-          if (ticketStatus.trim().isNotEmpty) ...[
+          if (hasStatus) ...[
             const SizedBox(width: 6),
             Text(
               ticketStatus,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: ticketColor,
               ),
             ),
           ],
@@ -2412,6 +2590,20 @@ class MovideskTicketInfo {
 
   final int? id;
   final String status;
+}
+
+class MovideskPersonInfo {
+  const MovideskPersonInfo({
+    required this.id,
+    required this.businessName,
+    required this.personType,
+    required this.profileType,
+  });
+
+  final String id;
+  final String businessName;
+  final int personType;
+  final int profileType;
 }
 
 class ProcessingException implements Exception {
