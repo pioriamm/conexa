@@ -189,6 +189,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   final TextEditingController _cnpjFilterController = TextEditingController();
   String _cnpjFilter = '';
   bool _hasError = false;
+  bool _autoOpenTicketOnDueToday = true;
   DateTime? _processStart;
   Duration _processElapsed = Duration.zero;
   Timer? _processTimer;
@@ -496,7 +497,8 @@ class _ProcessingPageState extends State<ProcessingPage>
         final shouldCreateNewTicket =
             ticketInfo?.id == null || _isTicketClosedStatus(ticketInfo!.status);
         final shouldOpenTicketForCharge =
-            cobrar == 'Vence hoje' || cobrar == 'Realizar cobrança';
+            cobrar == 'Realizar cobrança' ||
+            (cobrar == 'Vence hoje' && _autoOpenTicketOnDueToday);
         if (shouldOpenTicketForCharge && shouldCreateNewTicket) {
           try {
             final person = await _fetchMovideskPersonByBusinessName(
@@ -824,9 +826,11 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
 
     const retryDelays = [
-      Duration(milliseconds: 250),
-      Duration(milliseconds: 600),
-      Duration(milliseconds: 1200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 900),
+      Duration(milliseconds: 1500),
+      Duration(milliseconds: 2500),
+      Duration(milliseconds: 3500),
     ];
     for (final delay in retryDelays) {
       await Future<void>.delayed(delay);
@@ -1143,8 +1147,8 @@ class _ProcessingPageState extends State<ProcessingPage>
   Widget _buildIntro() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
+      children: [
+        const Text(
           'Consolide cobranças e tickets em minutos',
           style: TextStyle(
             fontFamily: 'Inter',
@@ -1155,8 +1159,8 @@ class _ProcessingPageState extends State<ProcessingPage>
             height: 1.2,
           ),
         ),
-        SizedBox(height: 6),
-        Text(
+        const SizedBox(height: 6),
+        const Text(
           'Envie a base Localiza, envie a planilha Conexa e processe — '
           'os tickets do Movidesk são consultados automaticamente.',
           style: TextStyle(
@@ -1165,6 +1169,30 @@ class _ProcessingPageState extends State<ProcessingPage>
             color: AppColors.textSecondary,
             height: 1.5,
           ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(
+              value: _autoOpenTicketOnDueToday,
+              onChanged: (value) {
+                setState(() {
+                  _autoOpenTicketOnDueToday = value;
+                });
+              },
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Abrir ticket automaticamente (Vence hoje)',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -2138,6 +2166,7 @@ class _ProcessingPageState extends State<ProcessingPage>
                         ticketId: row.ticketId,
                         ticketStatus: row.ticketStatus,
                       ),
+                      onTap: () => _openTicketLink(row.ticketMovideskUrl),
                     ),
                   ],
                 );
@@ -2153,11 +2182,18 @@ class _ProcessingPageState extends State<ProcessingPage>
   DataCell _buildCopyableDataCell({
     required Widget child,
     required String valueToCopy,
+    VoidCallback? onTap,
   }) {
     return DataCell(
       child,
-      onTap: () => _copyCellValue(valueToCopy),
+      onTap: onTap ?? () => _copyCellValue(valueToCopy),
     );
+  }
+
+  void _openTicketLink(String url) {
+    final normalizedUrl = url.trim();
+    if (normalizedUrl.isEmpty) return;
+    html.window.open(normalizedUrl, '_blank');
   }
 
   Future<void> _copyCellValue(String value) async {
@@ -2515,7 +2551,15 @@ class _TicketCell extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: ticketColor,
+              decoration: TextDecoration.underline,
+              decorationColor: ticketColor.withOpacity(0.45),
             ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.open_in_new_rounded,
+            size: 14,
+            color: ticketColor,
           ),
           if (hasStatus) ...[
             const SizedBox(width: 6),
