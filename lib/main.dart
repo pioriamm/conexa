@@ -3992,6 +3992,17 @@ Future<Map<String, String>> parseAdminVendaBytes(Uint8List bytes) async {
   return mapped;
 }
 
+List<String> _adminCobrancaColumnCandidates(String column) {
+  switch (column) {
+    case 'ID Cliente':
+      return ['ID Cliente', 'Cliente ID'];
+    case 'CPF/CNPJ':
+      return ['CPF/CNPJ', 'CNPJ/CPF', 'CPF CNPJ', 'CNPJ CPF'];
+    default:
+      return [column];
+  }
+}
+
 Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
   await _yield();
   final file = _decodeExcel(bytes);
@@ -4006,7 +4017,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
   final header = _headerMap(table.rows.first);
   final columnIndexes = <String, int>{};
   for (final col in AdminCobrancaRow.columns) {
-    final index = _findColumn(header, [col]);
+    final index = _findColumn(header, _adminCobrancaColumnCandidates(col));
     if (index != null) {
       columnIndexes[col] = index;
     }
@@ -4017,6 +4028,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
       'A planilha Admin Cobrança precisa conter a coluna ID Cliente.',
     );
   }
+
 
   final rows = <AdminCobrancaRow>[];
   for (var i = 1; i < table.rows.length; i++) {
@@ -4381,7 +4393,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaCsvBytes(
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
   final columnIndexes = <String, int>{};
   for (final col in AdminCobrancaRow.columns) {
-    final index = _csvFindColumn(header, [col]);
+    final index = _csvFindColumn(header, _adminCobrancaColumnCandidates(col));
     if (index != null) columnIndexes[col] = index;
   }
   if (!columnIndexes.containsKey('ID Cliente')) {
