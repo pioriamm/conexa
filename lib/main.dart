@@ -2901,7 +2901,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final normalizedClienteId = normalizeClientId(row.idCliente);
         final mapped = vendaMap[normalizedClienteId];
         row.servicoItem = mapped ?? '';
-        final detalhes = clientesDetalhes[normalizedClienteId];
+        final detalhes = clientesDetalhes[normalizedClienteId] ??
+            clientesDetalhes[normalizeClientId(row.values['CPF/CNPJ'] ?? '')];
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
@@ -4049,6 +4050,8 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   final grupoCol = _findColumn(header, ['Grupo']);
   final vendedorCol = _findColumn(header, ['Vendedor']);
   final parceiroCol = _findColumn(header, ['Parceiro']);
+  final codigoCol = _findColumn(header, ['Código', 'Codigo', 'codigo']);
+  final cnpjCol = _findColumn(header, ['CNPJ', 'CPF/CNPJ', 'cpf/cnpj']);
   final issRetidoCol = _findColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
   final quantidadeCnpjCol =
       _findColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
@@ -4080,6 +4083,19 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
           quantidadeCnpjCol == null ? '' : _cellValue(row, quantidadeCnpjCol),
       customSistema: _cellValue(row, customSistemaCol),
     );
+
+    if (codigoCol != null) {
+      final codigo = normalizeClientId(_cellValue(row, codigoCol));
+      if (codigo.isNotEmpty) {
+        mapped.putIfAbsent(codigo, () => mapped[id]!);
+      }
+    }
+    if (cnpjCol != null) {
+      final cnpj = normalizeClientId(_cellValue(row, cnpjCol));
+      if (cnpj.isNotEmpty) {
+        mapped.putIfAbsent(cnpj, () => mapped[id]!);
+      }
+    }
   }
   return mapped;
 }
@@ -4405,6 +4421,8 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   final grupoCol = _csvFindColumn(header, ['Grupo']);
   final vendedorCol = _csvFindColumn(header, ['Vendedor']);
   final parceiroCol = _csvFindColumn(header, ['Parceiro']);
+  final codigoCol = _csvFindColumn(header, ['Código', 'Codigo', 'codigo']);
+  final cnpjCol = _csvFindColumn(header, ['CNPJ', 'CPF/CNPJ', 'cpf/cnpj']);
   final issRetidoCol =
       _csvFindColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
   final quantidadeCnpjCol =
@@ -4438,6 +4456,18 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
           quantidadeCnpjCol == null ? '' : _csvField(row, quantidadeCnpjCol),
       customSistema: _csvField(row, customSistemaCol),
     );
+    if (codigoCol != null) {
+      final codigo = normalizeClientId(_csvField(row, codigoCol));
+      if (codigo.isNotEmpty) {
+        mapped.putIfAbsent(codigo, () => mapped[id]!);
+      }
+    }
+    if (cnpjCol != null) {
+      final cnpj = normalizeClientId(_csvField(row, cnpjCol));
+      if (cnpj.isNotEmpty) {
+        mapped.putIfAbsent(cnpj, () => mapped[id]!);
+      }
+    }
   }
   return mapped;
 }
