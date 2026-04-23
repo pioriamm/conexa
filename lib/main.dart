@@ -2763,10 +2763,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
   static const int _pageSize = 20;
   String? _adminVendaName;
   String? _adminCobrancaName;
+  String? _clientesDetalhesName;
   Uint8List? _adminVendaBytes;
   Uint8List? _adminCobrancaBytes;
+  Uint8List? _clientesDetalhesBytes;
   bool _adminVendaIsCsv = false;
   bool _adminCobrancaIsCsv = false;
+  bool _clientesDetalhesIsCsv = false;
   bool _loading = false;
   String _status = '';
   bool _hasError = false;
@@ -2813,6 +2816,22 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  Future<void> _pickClientesDetalhes() async {
+    await _pickAndStore(
+      onPicked: (name, bytes, isCsv) async {
+        final parsed = isCsv
+            ? await parseClientesDetalhesCsvBytes(bytes)
+            : await parseClientesDetalhesBytes(bytes);
+        setState(() {
+          _clientesDetalhesName = name;
+          _clientesDetalhesBytes = bytes;
+          _clientesDetalhesIsCsv = isCsv;
+          _status = 'Relatório de clientes carregado (${parsed.length} IDs).';
+        });
+      },
+    );
+  }
+
   Future<void> _pickAndStore({
     required Future<void> Function(String name, Uint8List bytes, bool isCsv)
         onPicked,
@@ -2851,10 +2870,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   Future<void> _process() async {
-    if (_adminVendaBytes == null || _adminCobrancaBytes == null) {
+    if (_adminVendaBytes == null ||
+        _adminCobrancaBytes == null ||
+        _clientesDetalhesBytes == null) {
       setState(() {
         _hasError = true;
-        _status = 'Envie as duas planilhas antes de processar.';
+        _status = 'Envie as três planilhas antes de processar.';
       });
       return;
     }
@@ -2872,10 +2893,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final cobrancaRows = _adminCobrancaIsCsv
           ? await parseAdminCobrancaCsvBytes(_adminCobrancaBytes!)
           : await parseAdminCobrancaBytes(_adminCobrancaBytes!);
+      final clientesDetalhes = _clientesDetalhesIsCsv
+          ? await parseClientesDetalhesCsvBytes(_clientesDetalhesBytes!)
+          : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
 
       for (final row in cobrancaRows) {
         final mapped = vendaMap[row.idCliente];
         row.servicoItem = mapped ?? '';
+        final detalhes = clientesDetalhes[row.idCliente];
+        row.grupo = detalhes?.grupo ?? '';
+        row.vendedor = detalhes?.vendedor ?? '';
+        row.parceiro = detalhes?.parceiro ?? '';
+        row.customSistema = detalhes?.customSistema ?? '';
       }
 
       if (!mounted) return;
@@ -2928,7 +2957,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Carregue as planilhas Conexa - Admin Venda e Conexa - Admin Cobrança para preencher a coluna Serviço/Item.',
+                'Carregue as planilhas Admin Venda, Admin Cobrança e o relatório complementar para preencher Serviço/Item, Grupo, Vendedor, Parceiro e Custom Sistema.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -3052,9 +3081,26 @@ class _CommissionsPageState extends State<CommissionsPage> {
           ),
           _buildUploadCard(
             stepNumber: 3,
+            icon: Icons.groups_outlined,
+            title: 'Relatório complementar',
+            description:
+                'Planilha com ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+            status: _loading && _clientesDetalhesName == null
+                ? StepStatus.carregando
+                : (_clientesDetalhesName != null
+                    ? StepStatus.pronto
+                    : StepStatus.pendente),
+            filename: _clientesDetalhesName,
+            buttonLabel: _clientesDetalhesName == null
+                ? 'Selecionar arquivo'
+                : 'Trocar arquivo',
+            onPressed: _loading ? null : _pickClientesDetalhes,
+          ),
+          _buildUploadCard(
+            stepNumber: 4,
             icon: Icons.auto_awesome_outlined,
             title: 'Processar',
-            description: 'Preenche Serviço/Item no Admin Cobrança.',
+            description: 'Preenche os campos extras no Admin Cobrança.',
             status: _loading
                 ? StepStatus.processando
                 : (_rows.isNotEmpty ? StepStatus.pronto : StepStatus.pendente),
@@ -3238,7 +3284,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           ),
           SizedBox(height: 4),
           Text(
-            'Envie as planilhas de Admin Venda e Admin Cobrança e clique em Processar para ver os dados aqui.',
+            'Envie as planilhas de Admin Venda, Admin Cobrança e relatório complementar e clique em Processar para ver os dados aqui.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Inter',
@@ -3468,6 +3514,10 @@ class AdminCobrancaRow {
   String get servicoItem => values['Serviço/Item'] ?? '';
 
   set servicoItem(String value) => values['Serviço/Item'] = value;
+  set grupo(String value) => values['Grupo'] = value;
+  set vendedor(String value) => values['Vendedor'] = value;
+  set parceiro(String value) => values['Parceiro'] = value;
+  set customSistema(String value) => values['Custom Sistema'] = value;
 
   static const List<String> columns = [
     'ID da Cobrança',
@@ -3508,6 +3558,10 @@ class AdminCobrancaRow {
     'Data cancelamento',
     'Observações',
     'Serviço/Item',
+    'Grupo',
+    'Vendedor',
+    'Parceiro',
+    'Custom Sistema',
   ];
 
   List<String> toValues() => columns.map((c) => values[c] ?? '').toList();
@@ -3541,6 +3595,22 @@ class ProcessingException implements Exception {
   const ProcessingException(this.message);
 
   final String message;
+}
+
+class ClientesDetalhesRow {
+  const ClientesDetalhesRow({
+    required this.id,
+    required this.grupo,
+    required this.vendedor,
+    required this.parceiro,
+    required this.customSistema,
+  });
+
+  final String id;
+  final String grupo;
+  final String vendedor;
+  final String parceiro;
+  final String customSistema;
 }
 
 class ChargeDateResult {
@@ -3933,6 +4003,53 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
   return rows;
 }
 
+Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
+  Uint8List bytes,
+) async {
+  await _yield();
+  final file = _decodeExcel(bytes);
+  if (file.tables.isEmpty) {
+    throw const ProcessingException('A planilha complementar está vazia.');
+  }
+  final table = file.tables.values.first;
+  if (table.rows.isEmpty) {
+    throw const ProcessingException('A planilha complementar está vazia.');
+  }
+
+  final header = _headerMap(table.rows.first);
+  final idCol = _findColumn(header, ['ID', 'Id', 'ID Cliente', 'Cliente ID']);
+  final grupoCol = _findColumn(header, ['Grupo']);
+  final vendedorCol = _findColumn(header, ['Vendedor']);
+  final parceiroCol = _findColumn(header, ['Parceiro']);
+  final customSistemaCol =
+      _findColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
+
+  if (idCol == null ||
+      grupoCol == null ||
+      vendedorCol == null ||
+      parceiroCol == null ||
+      customSistemaCol == null) {
+    throw const ProcessingException(
+      'A planilha complementar precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+    );
+  }
+
+  final mapped = <String, ClientesDetalhesRow>{};
+  for (var i = 1; i < table.rows.length; i++) {
+    final row = table.rows[i];
+    final id = _cellValue(row, idCol).trim();
+    if (id.isEmpty) continue;
+    mapped[id] = ClientesDetalhesRow(
+      id: id,
+      grupo: _cellValue(row, grupoCol),
+      vendedor: _cellValue(row, vendedorCol),
+      parceiro: _cellValue(row, parceiroCol),
+      customSistema: _cellValue(row, customSistemaCol),
+    );
+  }
+  return mapped;
+}
+
 // =============================================================================
 // Parsing CSV (streaming linha-a-linha, memória constante)
 // =============================================================================
@@ -4236,6 +4353,52 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaCsvBytes(
     rows.add(AdminCobrancaRow(values));
   }
   return rows;
+}
+
+Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
+  Uint8List bytes,
+) async {
+  await _yield();
+  final text = _decodeCsvText(bytes);
+  final sep = _detectCsvSeparator(text);
+  final lines = _csvSplitLines(text);
+  if (lines.isEmpty) {
+    throw const ProcessingException('CSV complementar está vazio.');
+  }
+
+  final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
+  final idCol = _csvFindColumn(header, ['ID', 'Id', 'ID Cliente', 'Cliente ID']);
+  final grupoCol = _csvFindColumn(header, ['Grupo']);
+  final vendedorCol = _csvFindColumn(header, ['Vendedor']);
+  final parceiroCol = _csvFindColumn(header, ['Parceiro']);
+  final customSistemaCol =
+      _csvFindColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
+
+  if (idCol == null ||
+      grupoCol == null ||
+      vendedorCol == null ||
+      parceiroCol == null ||
+      customSistemaCol == null) {
+    throw const ProcessingException(
+      'O CSV complementar precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+    );
+  }
+
+  final mapped = <String, ClientesDetalhesRow>{};
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    final row = _parseCsvLine(lines[i], sep);
+    final id = _csvField(row, idCol).trim();
+    if (id.isEmpty) continue;
+    mapped[id] = ClientesDetalhesRow(
+      id: id,
+      grupo: _csvField(row, grupoCol),
+      vendedor: _csvField(row, vendedorCol),
+      parceiro: _csvField(row, parceiroCol),
+      customSistema: _csvField(row, customSistemaCol),
+    );
+  }
+  return mapped;
 }
 
 Map<String, int> _headerMap(List<excel.Data?> headerRow) {
