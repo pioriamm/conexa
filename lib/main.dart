@@ -493,7 +493,9 @@ class _ProcessingPageState extends State<ProcessingPage>
           }
         }
 
-        if (cobrar == 'Vence hoje' && ticketInfo?.id == null) {
+        final shouldCreateNewTicket =
+            ticketInfo?.id == null || _isTicketClosedStatus(ticketInfo!.status);
+        if (cobrar == 'Vence hoje' && shouldCreateNewTicket) {
           try {
             final person = await _fetchMovideskPersonByBusinessName(
                   localiza?.grupo ?? '',
@@ -835,6 +837,13 @@ class _ProcessingPageState extends State<ProcessingPage>
     if (_shouldPerformCharge(chargeDate)) return 'Realizar cobrança';
     if (_isToday(chargeDate)) return 'Vence hoje';
     return 'No prazo';
+  }
+
+  bool _isTicketClosedStatus(String status) {
+    final normalized = normalizeKey(status);
+    return normalized == 'fechado' ||
+        normalized == 'resolvido' ||
+        normalized == 'cancelado';
   }
 
   String _resolveModalidade(String? modalidade) {
