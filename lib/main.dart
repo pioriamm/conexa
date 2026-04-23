@@ -495,7 +495,9 @@ class _ProcessingPageState extends State<ProcessingPage>
 
         final shouldCreateNewTicket =
             ticketInfo?.id == null || _isTicketClosedStatus(ticketInfo!.status);
-        if (cobrar == 'Vence hoje' && shouldCreateNewTicket) {
+        final shouldOpenTicketForCharge =
+            cobrar == 'Vence hoje' || cobrar == 'Realizar cobrança';
+        if (shouldOpenTicketForCharge && shouldCreateNewTicket) {
           try {
             final person = await _fetchMovideskPersonByBusinessName(
                   localiza?.grupo ?? '',
@@ -517,7 +519,8 @@ class _ProcessingPageState extends State<ProcessingPage>
               openedTicketsByCnpj[cnpjDigits] = ticketInfo!;
             }
           } catch (_) {
-            // Mantém a linha sem ticket caso a criação falhe.
+            // Evita manter referência de ticket fechado quando a reabertura falhar.
+            ticketInfo = null;
           }
         }
 
@@ -841,9 +844,9 @@ class _ProcessingPageState extends State<ProcessingPage>
 
   bool _isTicketClosedStatus(String status) {
     final normalized = normalizeKey(status);
-    return normalized == 'fechado' ||
-        normalized == 'resolvido' ||
-        normalized == 'cancelado';
+    return normalized.contains('fechado') ||
+        normalized.contains('resolvido') ||
+        normalized.contains('cancelado');
   }
 
   String _resolveModalidade(String? modalidade) {
