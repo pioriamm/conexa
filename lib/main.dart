@@ -2826,7 +2826,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _clientesDetalhesName = name;
           _clientesDetalhesBytes = bytes;
           _clientesDetalhesIsCsv = isCsv;
-          _status = 'Relatório de clientes carregado (${parsed.length} IDs).';
+          _status = 'Base Tenex carregada (${parsed.length} IDs).';
         });
       },
     );
@@ -2875,7 +2875,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         _clientesDetalhesBytes == null) {
       setState(() {
         _hasError = true;
-        _status = 'Envie as três planilhas antes de processar.';
+        _status = 'Envie os arquivos na ordem: Admin Cobrança, Admin Venda e Tenex, antes de processar.';
       });
       return;
     }
@@ -2914,7 +2914,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       setState(() {
         _rows = [..._rows, ...cobrancaRows];
         _currentPage = 0;
-        _status = 'Processamento concluído (${_rows.length} linhas).';
+        _status = 'Processamento concluído (${_rows.length} linhas) usando a chave ID Cliente ↔ Cliente ID ↔ ID.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
@@ -2960,7 +2960,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Carregue as planilhas Admin Venda, Admin Cobrança e Tenex completa para preencher Serviço/Item, Grupo, Vendedor, Parceiro, ISS Retido, Quantidade CNPJ e Custom Sistema.',
+                'Carregue as planilhas na ordem: Admin Cobrança (principal), Admin Venda (base) e Tenex (base) para preencher Serviço/Item, Grupo, Vendedor, Parceiro, ISS Retido, Quantidade CNPJ e Custom Sistema.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -3059,21 +3059,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final cards = [
           _buildUploadCard(
             stepNumber: 1,
-            icon: Icons.upload_file_outlined,
-            title: 'Admin Venda',
-            description: 'Base com ID Cliente e Serviço/Item.',
-            status: _loading && _adminVendaName == null
-                ? StepStatus.carregando
-                : (_adminVendaName != null ? StepStatus.pronto : StepStatus.pendente),
-            filename: _adminVendaName,
-            buttonLabel: _adminVendaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
-            onPressed: _loading ? null : _pickAdminVenda,
-          ),
-          _buildUploadCard(
-            stepNumber: 2,
             icon: Icons.receipt_long_outlined,
-            title: 'Admin Cobrança',
-            description: 'Planilha com as colunas de comissões.',
+            title: 'Admin Cobrança (principal)',
+            description: 'Arquivo principal com a chave ID Cliente.',
             status: _loading && _adminCobrancaName == null
                 ? StepStatus.carregando
                 : (_adminCobrancaName != null ? StepStatus.pronto : StepStatus.pendente),
@@ -3083,11 +3071,23 @@ class _CommissionsPageState extends State<CommissionsPage> {
             onPressed: _loading ? null : _pickAdminCobranca,
           ),
           _buildUploadCard(
+            stepNumber: 2,
+            icon: Icons.upload_file_outlined,
+            title: 'Admin Venda (base)',
+            description: 'Base com Cliente ID e Serviço/Item.',
+            status: _loading && _adminVendaName == null
+                ? StepStatus.carregando
+                : (_adminVendaName != null ? StepStatus.pronto : StepStatus.pendente),
+            filename: _adminVendaName,
+            buttonLabel: _adminVendaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
+            onPressed: _loading || _adminCobrancaName == null ? null : _pickAdminVenda,
+          ),
+          _buildUploadCard(
             stepNumber: 3,
             icon: Icons.groups_outlined,
-            title: 'Relatório complementar',
+            title: 'Tenex (base)',
             description:
-                'Planilha com ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+                'Base com ID e dados de Grupo, Vendedor, Parceiro e Custom Sistema.',
             status: _loading && _clientesDetalhesName == null
                 ? StepStatus.carregando
                 : (_clientesDetalhesName != null
@@ -3097,7 +3097,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
             buttonLabel: _clientesDetalhesName == null
                 ? 'Selecionar arquivo'
                 : 'Trocar arquivo',
-            onPressed: _loading ? null : _pickClientesDetalhes,
+            onPressed: _loading || _adminCobrancaName == null || _adminVendaName == null
+                ? null
+                : _pickClientesDetalhes,
           ),
           _buildUploadCard(
             stepNumber: 4,
@@ -3287,7 +3289,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           ),
           SizedBox(height: 4),
           Text(
-            'Envie as planilhas de Admin Venda, Admin Cobrança e relatório complementar e clique em Processar para ver os dados aqui.',
+            'Envie as planilhas de Admin Cobrança, Admin Venda e Tenex e clique em Processar para ver os dados aqui.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'Inter',
@@ -4035,11 +4037,11 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   await _yield();
   final file = _decodeExcel(bytes);
   if (file.tables.isEmpty) {
-    throw const ProcessingException('A planilha complementar está vazia.');
+    throw const ProcessingException('A planilha Tenex está vazia.');
   }
   final table = file.tables.values.first;
   if (table.rows.isEmpty) {
-    throw const ProcessingException('A planilha complementar está vazia.');
+    throw const ProcessingException('A planilha Tenex está vazia.');
   }
 
   final header = _headerMap(table.rows.first);
@@ -4059,7 +4061,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
       parceiroCol == null ||
       customSistemaCol == null) {
     throw const ProcessingException(
-      'A planilha complementar precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+      'A planilha Tenex precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
     );
   }
 
@@ -4395,7 +4397,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   final sep = _detectCsvSeparator(text);
   final lines = _csvSplitLines(text);
   if (lines.isEmpty) {
-    throw const ProcessingException('CSV complementar está vazio.');
+    throw const ProcessingException('CSV Tenex está vazio.');
   }
 
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
@@ -4416,7 +4418,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
       parceiroCol == null ||
       customSistemaCol == null) {
     throw const ProcessingException(
-      'O CSV complementar precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+      'O CSV Tenex precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
     );
   }
 
