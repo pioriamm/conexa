@@ -504,17 +504,19 @@ class _ProcessingPageState extends State<ProcessingPage>
                   _movideskToken,
                 ) ??
                 _fallbackMovideskPerson;
-            ticketInfo = await _createMovideskTicket(
-                  token: _movideskToken,
-                  person: person,
-                  cnpj: formattedCnpj(cnpjDigits),
-                  razaoSocial: row.razaoSocialCliente,
-                  idCobranca: row.idCobranca,
-                  email: normalizeEmails(row.emails),
-                  telefone: formatFirstPhone(row.telefone),
-                  dataVencimento: dataVencimento,
-                ) ??
-                ticketInfo;
+            final formattedDocument = formattedCnpj(cnpjDigits);
+            ticketInfo =
+                await _createOrFetchMovideskTicketAfterCreate(
+                      token: _movideskToken,
+                      person: person,
+                      cnpj: formattedDocument,
+                      razaoSocial: row.razaoSocialCliente,
+                      idCobranca: row.idCobranca,
+                      email: normalizeEmails(row.emails),
+                      telefone: formatFirstPhone(row.telefone),
+                      dataVencimento: dataVencimento,
+                    ) ??
+                    ticketInfo;
             if (ticketInfo?.id != null) {
               openedTicketsByCnpj[cnpjDigits] = ticketInfo!;
             }
@@ -795,6 +797,45 @@ class _ProcessingPageState extends State<ProcessingPage>
     if (id == null) return null;
     final status = data['status']?.toString() ?? 'Iniciar Atendimento';
     return MovideskTicketInfo(id: id, status: status);
+  }
+
+  Future<MovideskTicketInfo?> _createOrFetchMovideskTicketAfterCreate({
+    required String token,
+    required MovideskPersonInfo person,
+    required String cnpj,
+    required String razaoSocial,
+    required String idCobranca,
+    required String email,
+    required String telefone,
+    required DateTime? dataVencimento,
+  }) async {
+    final createdTicket = await _createMovideskTicket(
+      token: token,
+      person: person,
+      cnpj: cnpj,
+      razaoSocial: razaoSocial,
+      idCobranca: idCobranca,
+      email: email,
+      telefone: telefone,
+      dataVencimento: dataVencimento,
+    );
+    if (createdTicket?.id != null) {
+      return createdTicket;
+    }
+
+    const retryDelays = [
+      Duration(milliseconds: 250),
+      Duration(milliseconds: 600),
+      Duration(milliseconds: 1200),
+    ];
+    for (final delay in retryDelays) {
+      await Future<void>.delayed(delay);
+      final fetchedTicket = await _fetchMovideskTicketInfo(cnpj, token);
+      if (fetchedTicket?.id != null) {
+        return fetchedTicket;
+      }
+    }
+    return createdTicket;
   }
 
   String _formatMovideskDate(DateTime? date) {
