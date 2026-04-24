@@ -2898,11 +2898,20 @@ class _CommissionsPageState extends State<CommissionsPage> {
           : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
 
       for (final row in cobrancaRows) {
-        final normalizedClienteId = normalizeClientId(row.idCliente);
-        final mapped = vendaMap[normalizedClienteId];
+        final clienteIdKeys = clientIdLookupKeys(row.idCliente);
+        String? mapped;
+        for (final key in clienteIdKeys) {
+          mapped = vendaMap[key];
+          if (mapped != null && mapped.isNotEmpty) break;
+        }
         row.servicoItem = mapped ?? '';
-        final detalhes = clientesDetalhes[normalizedClienteId] ??
-            clientesDetalhes[normalizeClientId(row.values['CPF/CNPJ'] ?? '')];
+
+        final cpfCnpjKeys = clientIdLookupKeys(row.values['CPF/CNPJ'] ?? '');
+        ClientesDetalhesRow? detalhes;
+        for (final key in [...clienteIdKeys, ...cpfCnpjKeys]) {
+          detalhes = clientesDetalhes[key];
+          if (detalhes != null) break;
+        }
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
@@ -3983,11 +3992,12 @@ Future<Map<String, String>> parseAdminVendaBytes(Uint8List bytes) async {
   final mapped = <String, String>{};
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
-    final clienteId = normalizeClientId(_cellValue(row, clienteIdCol));
-    if (clienteId.isEmpty) continue;
+    final clienteId = _cellValue(row, clienteIdCol);
     final servicoItem = _mapServicoItem(_cellValue(row, servicoItemCol));
     if (servicoItem.isEmpty) continue;
-    mapped[clienteId] = servicoItem;
+    for (final key in clientIdLookupKeys(clienteId)) {
+      mapped[key] = servicoItem;
+    }
   }
   return mapped;
 }
@@ -4083,9 +4093,10 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   final mapped = <String, ClientesDetalhesRow>{};
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
-    final id = normalizeClientId(_cellValue(row, idCol));
+    final idRaw = _cellValue(row, idCol);
+    final id = normalizeClientId(idRaw);
     if (id.isEmpty) continue;
-    mapped[id] = ClientesDetalhesRow(
+    final detalhes = ClientesDetalhesRow(
       id: id,
       grupo: _cellValue(row, grupoCol),
       vendedor: _cellValue(row, vendedorCol),
@@ -4096,16 +4107,18 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
       customSistema: _cellValue(row, customSistemaCol),
     );
 
+    for (final key in clientIdLookupKeys(idRaw)) {
+      mapped[key] = detalhes;
+    }
+
     if (codigoCol != null) {
-      final codigo = normalizeClientId(_cellValue(row, codigoCol));
-      if (codigo.isNotEmpty) {
-        mapped.putIfAbsent(codigo, () => mapped[id]!);
+      for (final key in clientIdLookupKeys(_cellValue(row, codigoCol))) {
+        mapped.putIfAbsent(key, () => detalhes);
       }
     }
     if (cnpjCol != null) {
-      final cnpj = normalizeClientId(_cellValue(row, cnpjCol));
-      if (cnpj.isNotEmpty) {
-        mapped.putIfAbsent(cnpj, () => mapped[id]!);
+      for (final key in clientIdLookupKeys(_cellValue(row, cnpjCol))) {
+        mapped.putIfAbsent(key, () => detalhes);
       }
     }
   }
@@ -4370,11 +4383,12 @@ Future<Map<String, String>> parseAdminVendaCsvBytes(Uint8List bytes) async {
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
     final row = _parseCsvLine(lines[i], sep);
-    final clienteId = normalizeClientId(_csvField(row, clienteIdCol));
-    if (clienteId.isEmpty) continue;
+    final clienteId = _csvField(row, clienteIdCol);
     final servicoItem = _mapServicoItem(_csvField(row, servicoItemCol));
     if (servicoItem.isEmpty) continue;
-    mapped[clienteId] = servicoItem;
+    for (final key in clientIdLookupKeys(clienteId)) {
+      mapped[key] = servicoItem;
+    }
   }
   return mapped;
 }
@@ -4456,9 +4470,10 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
     final row = _parseCsvLine(lines[i], sep);
-    final id = normalizeClientId(_csvField(row, idCol));
+    final idRaw = _csvField(row, idCol);
+    final id = normalizeClientId(idRaw);
     if (id.isEmpty) continue;
-    mapped[id] = ClientesDetalhesRow(
+    final detalhes = ClientesDetalhesRow(
       id: id,
       grupo: _csvField(row, grupoCol),
       vendedor: _csvField(row, vendedorCol),
@@ -4468,16 +4483,17 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
           quantidadeCnpjCol == null ? '' : _csvField(row, quantidadeCnpjCol),
       customSistema: _csvField(row, customSistemaCol),
     );
+    for (final key in clientIdLookupKeys(idRaw)) {
+      mapped[key] = detalhes;
+    }
     if (codigoCol != null) {
-      final codigo = normalizeClientId(_csvField(row, codigoCol));
-      if (codigo.isNotEmpty) {
-        mapped.putIfAbsent(codigo, () => mapped[id]!);
+      for (final key in clientIdLookupKeys(_csvField(row, codigoCol))) {
+        mapped.putIfAbsent(key, () => detalhes);
       }
     }
     if (cnpjCol != null) {
-      final cnpj = normalizeClientId(_csvField(row, cnpjCol));
-      if (cnpj.isNotEmpty) {
-        mapped.putIfAbsent(cnpj, () => mapped[id]!);
+      for (final key in clientIdLookupKeys(_csvField(row, cnpjCol))) {
+        mapped.putIfAbsent(key, () => detalhes);
       }
     }
   }
@@ -4548,6 +4564,27 @@ String normalizeClientId(String input) {
 
   final digits = digitsOnly(trimmed);
   return digits.isNotEmpty ? digits : trimmed;
+}
+
+
+List<String> clientIdLookupKeys(String input) {
+  final raw = input.trim();
+  if (raw.isEmpty) return const [];
+
+  final keys = <String>{};
+
+  final normalized = normalizeClientId(raw);
+  if (normalized.isNotEmpty) keys.add(normalized);
+
+  final digits = digitsOnly(raw);
+  if (digits.isNotEmpty) keys.add(digits);
+
+  final compact = raw.replaceAll(RegExp(r'\s+'), '');
+  if (compact.isNotEmpty) keys.add(compact);
+
+  keys.add(raw);
+
+  return keys.toList(growable: false);
 }
 
 /// Converte um valor em texto para o padrão brasileiro "R$ 1.234,56".
