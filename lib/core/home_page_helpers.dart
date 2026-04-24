@@ -1,4 +1,4 @@
-part of 'home_pages.dart';
+part of '../views/pages/home_pages.dart';
 
 enum StepStatus { pendente, carregando, pronto, processando }
 
