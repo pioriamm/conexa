@@ -1,26 +1,8 @@
 part of '../views/pages/home_pages.dart';
 
-enum StepStatus { pendente, carregando, pronto, processando }
 
-class ClientesDetalhesRow {
-  const ClientesDetalhesRow({
-    required this.id,
-    required this.grupo,
-    required this.vendedor,
-    required this.parceiro,
-    required this.issRetido,
-    required this.quantidadeCnpj,
-    required this.customSistema,
-  });
 
-  final String id;
-  final String grupo;
-  final String vendedor;
-  final String parceiro;
-  final String issRetido;
-  final String quantidadeCnpj;
-  final String customSistema;
-}
+
 
 class ChargeDateResult {
   const ChargeDateResult({
@@ -425,7 +407,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
   return rows;
 }
 
-Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
+Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
   Uint8List bytes,
 ) async {
   await _yield();
@@ -459,20 +441,17 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
     );
   }
 
-  final mapped = <String, ClientesDetalhesRow>{};
+  final mapped = <String, LinhaDetalhaTenex>{};
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
     final idRaw = _cellValue(row, idCol);
     final id = normalizeClientId(idRaw);
     if (id.isEmpty) continue;
-    final detalhes = ClientesDetalhesRow(
+    final detalhes = LinhaDetalhaTenex(
       id: id,
       grupo: _cellValue(row, grupoCol),
       vendedor: _cellValue(row, vendedorCol),
       parceiro: _cellValue(row, parceiroCol),
-      issRetido: issRetidoCol == null ? '' : _cellValue(row, issRetidoCol),
-      quantidadeCnpj:
-          quantidadeCnpjCol == null ? '' : _cellValue(row, quantidadeCnpjCol),
       customSistema: _cellValue(row, customSistemaCol),
     );
 
@@ -789,7 +768,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaCsvBytes(
   return rows;
 }
 
-Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
+Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
   Uint8List bytes,
 ) async {
   await _yield();
@@ -801,16 +780,11 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   }
 
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
-  final idCol = _csvFindColumn(header, ['ID Cliente', 'Cliente ID']);
-  final grupoCol = _csvFindColumn(header, ['Grupo']);
-  final vendedorCol = _csvFindColumn(header, ['Vendedor']);
-  final parceiroCol = _csvFindColumn(header, ['Parceiro']);
-  final issRetidoCol =
-      _csvFindColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
-  final quantidadeCnpjCol =
-      _csvFindColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
-  final customSistemaCol =
-      _csvFindColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
+  final idCol = _csvFindColumn(header, ['ID Cliente', 'Cliente ID', 'id']);
+  final grupoCol = _csvFindColumn(header, ['grupo']);
+  final vendedorCol = _csvFindColumn(header, ['vendedor']);
+  final parceiroCol = _csvFindColumn(header, ['parceiro']);
+  final customSistemaCol = _csvFindColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom','custom sistema']);
 
   if (idCol == null ||
       grupoCol == null ||
@@ -822,22 +796,20 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
     );
   }
 
-  final mapped = <String, ClientesDetalhesRow>{};
+  final mapped = <String, LinhaDetalhaTenex>{};
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
     final row = _parseCsvLine(lines[i], sep);
     final idRaw = _csvField(row, idCol);
     final id = normalizeClientId(idRaw);
     if (id.isEmpty) continue;
-    final detalhes = ClientesDetalhesRow(
+    final detalhes = LinhaDetalhaTenex(
       id: id,
       grupo: _csvField(row, grupoCol),
       vendedor: _csvField(row, vendedorCol),
       parceiro: _csvField(row, parceiroCol),
-      issRetido: issRetidoCol == null ? '' : _csvField(row, issRetidoCol),
-      quantidadeCnpj:
-          quantidadeCnpjCol == null ? '' : _csvField(row, quantidadeCnpjCol),
       customSistema: _csvField(row, customSistemaCol),
+
     );
     for (final key in clientIdLookupKeys(idRaw)) {
       mapped[key] = detalhes;

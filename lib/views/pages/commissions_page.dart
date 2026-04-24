@@ -118,6 +118,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   T? _lookupByClientId<T>(Map<String, T> source, dynamic rawId) {
+    rawId = "559";
     if (rawId == null) return null;
     for (final key in clientIdLookupKeys(rawId.toString())) {
       final found = source[key];
@@ -170,7 +171,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         }
       });
 
-      final tenexByKey = <String, ClientesDetalhesRow>{};
+      final tenexByKey = <String, LinhaDetalhaTenex>{};
       clientesDetalhes.forEach((k, v) {
         for (final nk in clientIdLookupKeys(k)) {
           if (nk.isNotEmpty) tenexByKey[nk] = v;
@@ -194,8 +195,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
-        row.issRetido = detalhes?.issRetido ?? '';
-        row.quantidadeCnpj = detalhes?.quantidadeCnpj ?? '';
         row.customSistema = detalhes?.customSistema ?? '';
       }
 
