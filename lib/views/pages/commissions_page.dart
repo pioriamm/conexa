@@ -22,6 +22,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
   String _status = '';
   bool _hasError = false;
   List<AdminCobrancaRow> _rows = [];
+  int _tenexProcessed = 0;
+  int _tenexTotal = 0;
   int _currentPage = 0;
   final ScrollController _commissionsHorizontalScrollController =
   ScrollController();
@@ -38,11 +40,26 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final parsed = isCsv
             ? await parseAdminVendaCsvBytes(bytes)
             : await parseAdminVendaBytes(bytes);
+        List<AdminCobrancaRow>? previewRows;
+        if (_adminCobrancaBytes != null) {
+          previewRows = await _buildRowsWithVenda(
+            adminCobrancaBytes: _adminCobrancaBytes!,
+            adminCobrancaIsCsv: _adminCobrancaIsCsv,
+            vendaMap: parsed,
+          );
+        }
         setState(() {
           _adminVendaName = name;
           _adminVendaBytes = bytes;
           _adminVendaIsCsv = isCsv;
-          _status = 'Admin Venda carregada (${parsed.length} clientes).';
+          if (previewRows != null) {
+            _rows = previewRows;
+            _currentPage = 0;
+            _status =
+                'Admin Venda carregada (${parsed.length} clientes). Grid preparado com ${_rows.length} registros da Cobrança.';
+          } else {
+            _status = 'Admin Venda carregada (${parsed.length} clientes).';
+          }
         });
       },
     );
@@ -141,72 +158,71 @@ class _CommissionsPageState extends State<CommissionsPage> {
     setState(() {
       _loading = true;
       _hasError = false;
+      _tenexProcessed = 0;
+      _tenexTotal = 0;
       _status = 'Processando planilhas...';
     });
 
     try {
-      // Admin Venda -> Map<ID Cliente, Serviço/Item>
-      // (parseAdminVendaBytes já deve retornar esse mapa; se não, veja nota abaixo.)
       final vendaMap = _adminVendaIsCsv
           ? await parseAdminVendaCsvBytes(_adminVendaBytes!)
           : await parseAdminVendaBytes(_adminVendaBytes!);
 
-      // Admin Cobrança -> lista de linhas (base principal do grid)
-      final cobrancaRows = _adminCobrancaIsCsv
-          ? await parseAdminCobrancaCsvBytes(_adminCobrancaBytes!)
-          : await parseAdminCobrancaBytes(_adminCobrancaBytes!);
+      final cobrancaRows = await _buildRowsWithVenda(
+        adminCobrancaBytes: _adminCobrancaBytes!,
+        adminCobrancaIsCsv: _adminCobrancaIsCsv,
+        vendaMap: vendaMap,
+      );
 
-      // Tenex -> Map<id, ClientesDetalhesRow>
       final clientesDetalhes = _clientesDetalhesIsCsv
           ? await parseClientesDetalhesCsvBytes(_clientesDetalhesBytes!)
           : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
 
-      // Normaliza as chaves dos dois mapas auxiliares uma única vez
-      // para garantir consistência na comparação.
-      final vendaByKey = <String, String>{};
-      vendaMap.forEach((k, v) {
-        for (final nk in clientIdLookupKeys(k)) {
-          if (nk.isNotEmpty) vendaByKey[nk] = v;
-        }
-      });
-
       final tenexByKey = <String, LinhaDetalhaTenex>{};
       clientesDetalhes.forEach((k, v) {
         for (final nk in clientIdLookupKeys(k)) {
-          if (nk.isNotEmpty){
+          if (nk.isNotEmpty) {
             tenexByKey[nk] = v;
-          };
+          }
         }
       });
 
-      // ==============================================================
-      // JOIN:
-      // Para cada linha do Admin Cobrança, a chave é o "ID Cliente".
-      //   - Se existir no Admin Venda (Cliente ID), pega "Serviço/Item".
-      //   - Se existir no Tenex (id), pega grupo, vendedor, parceiro,
-      //     iss retido, quantidade cnpj e custom sistema.
-      // ==============================================================
-      for (final row in cobrancaRows) {
-        // Admin Venda -> Serviço/Item
-        final servicoItem = _lookupByClientId(vendaByKey, row.idCliente);
-        row.servicoItem = servicoItem ?? '';
+      if (!mounted) return;
+      setState(() {
+        _rows = cobrancaRows;
+        _currentPage = 0;
+        _tenexTotal = cobrancaRows.length;
+        _status =
+            'Base pronta. Iniciando enriquecimento Tenex registro a registro...';
+      });
 
-        // Tenex -> demais campos
+      for (var index = 0; index < cobrancaRows.length; index++) {
+        final row = cobrancaRows[index];
         final detalhes = _lookupByClientId(tenexByKey, row.idCliente);
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
         row.customSistema = detalhes?.customSistema ?? '';
+
+        if (!mounted) return;
+        setState(() {
+          _rows[index] = row;
+          _tenexProcessed = index + 1;
+          _status =
+              'Processando Tenex: $_tenexProcessed de $_tenexTotal registros.';
+        });
+
+        if (index % 20 == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
       }
 
       if (!mounted) return;
       setState(() {
-        // BUG CORRIGIDO: antes era `_rows = [..._rows, ...cobrancaRows]`,
-        // que duplicava o grid a cada "Processar novamente".
         _rows = cobrancaRows;
         _currentPage = 0;
         _status =
-        'Processamento concluído (${_rows.length} linhas) usando apenas a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
+            'Processamento concluído (${_rows.length} linhas) usando a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
@@ -217,6 +233,30 @@ class _CommissionsPageState extends State<CommissionsPage> {
         _status = e.message;
       });
     }
+  }
+
+  Future<List<AdminCobrancaRow>> _buildRowsWithVenda({
+    required Uint8List adminCobrancaBytes,
+    required bool adminCobrancaIsCsv,
+    required Map<String, String> vendaMap,
+  }) async {
+    final cobrancaRows = adminCobrancaIsCsv
+        ? await parseAdminCobrancaCsvBytes(adminCobrancaBytes)
+        : await parseAdminCobrancaBytes(adminCobrancaBytes);
+
+    final vendaByKey = <String, String>{};
+    vendaMap.forEach((k, v) {
+      for (final nk in clientIdLookupKeys(k)) {
+        if (nk.isNotEmpty) vendaByKey[nk] = v;
+      }
+    });
+
+    for (final row in cobrancaRows) {
+      final servicoItem = _lookupByClientId(vendaByKey, row.idCliente);
+      row.servicoItem = servicoItem ?? '';
+    }
+
+    return cobrancaRows;
   }
 
   @override
@@ -253,7 +293,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Carregue as planilhas na ordem: Admin Cobrança (principal), Admin Venda (base) e Tenex (base). O join usa apenas ID Cliente = Cliente ID = id para trazer Serviço/Item, Grupo, Vendedor, Parceiro e Custom Sistema.',
+                'Carregue as planilhas na ordem: Cobrança (principal), Vendas (base) e Tenex (base). Ao enviar Vendas, o grid já é carregado. Depois, envie Tenex e processe para atualizar Grupo, Vendedor, Parceiro e Custom Sistema registro por registro.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -356,7 +396,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _buildUploadCard(
             stepNumber: 1,
             icon: Icons.receipt_long_outlined,
-            title: 'Admin Cobrança (principal)',
+            title: 'Cobrança (Admin Cobrança)',
             description: 'Arquivo principal com a chave ID Cliente.',
             status: _loading && _adminCobrancaName == null
                 ? StepStatus.carregando
@@ -372,7 +412,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _buildUploadCard(
             stepNumber: 2,
             icon: Icons.upload_file_outlined,
-            title: 'Admin Venda (base)',
+            title: 'Vendas (Admin Venda)',
             description: 'Base com Cliente ID e Serviço/Item.',
             status: _loading && _adminVendaName == null
                 ? StepStatus.carregando
@@ -419,7 +459,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 : '${_formatInt(_rows.length)} linhas processadas',
             buttonLabel:
             _rows.isEmpty ? 'Processar comissões' : 'Processar novamente',
-            onPressed: _loading ? null : _process,
+            onPressed: _loading ||
+                _adminCobrancaName == null ||
+                _adminVendaName == null ||
+                _clientesDetalhesName == null
+                ? null
+                : _process,
             primary: true,
           ),
         ];
