@@ -173,7 +173,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final tenexByKey = <String, LinhaDetalhaTenex>{};
       clientesDetalhes.forEach((k, v) {
         for (final nk in clientIdLookupKeys(k)) {
-          if (nk.isNotEmpty) tenexByKey[nk] = v;
+          if (nk.isNotEmpty){
+            tenexByKey[nk] = v;
+          };
         }
       });
 
