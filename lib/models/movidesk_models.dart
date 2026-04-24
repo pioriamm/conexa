@@ -1,3 +1,4 @@
+/// Classe MovideskTicketInfo: descreve sua responsabilidade no fluxo da aplicação.
 class MovideskTicketInfo {
   const MovideskTicketInfo({
     required this.id,
@@ -8,6 +9,7 @@ class MovideskTicketInfo {
   final String status;
 }
 
+/// Classe MovideskPersonInfo: descreve sua responsabilidade no fluxo da aplicação.
 class MovideskPersonInfo {
   const MovideskPersonInfo({
     required this.id,
@@ -22,11 +24,13 @@ class MovideskPersonInfo {
   final int profileType;
 }
 
+/// Classe ProcessingException: descreve sua responsabilidade no fluxo da aplicação.
 class ProcessingException implements Exception {
   const ProcessingException(this.message);
 
   final String message;
 
   @override
+  /// Método/função toString: executa a lógica descrita por sua implementação.
   String toString() => message;
 }

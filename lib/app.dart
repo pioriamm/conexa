@@ -5,6 +5,7 @@ import 'core/app_colors.dart';
 import 'viewmodels/navigation_view_model.dart';
 import 'views/app_shell.dart';
 
+/// Classe ConexaApp: descreve sua responsabilidade no fluxo da aplicação.
 class ConexaApp extends StatelessWidget {
   const ConexaApp({
     super.key,
@@ -16,6 +17,7 @@ class ConexaApp extends StatelessWidget {
   final Widget commissionsPage;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     final base = ThemeData(
       useMaterial3: true,

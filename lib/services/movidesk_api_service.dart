@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 
 import '../models/movidesk_models.dart';
 
+/// Classe MovideskApiService: descreve sua responsabilidade no fluxo da aplicação.
 class MovideskApiService {
+  /// Método/função fetchTicketInfo: executa a lógica descrita por sua implementação.
   Future<MovideskTicketInfo?> fetchTicketInfo(String cnpjFormatado, String token) async {
     if (token.isEmpty || cnpjFormatado.isEmpty) {
       return null;
@@ -82,6 +84,7 @@ class MovideskApiService {
     return null;
   }
 
+  /// Método/função fetchPersonByBusinessName: executa a lógica descrita por sua implementação.
   Future<MovideskPersonInfo?> fetchPersonByBusinessName(String businessName, String token) async {
     final trimmed = businessName.trim();
     if (token.isEmpty || trimmed.isEmpty) {
@@ -122,6 +125,7 @@ class MovideskApiService {
     );
   }
 
+  /// Método/função createTicket: executa a lógica descrita por sua implementação.
   Future<MovideskTicketInfo?> createTicket({
     required String token,
     required MovideskPersonInfo person,
@@ -190,6 +194,7 @@ class MovideskApiService {
     return MovideskTicketInfo(id: id, status: status);
   }
 
+  /// Método/função createOrFetchTicketAfterCreate: executa a lógica descrita por sua implementação.
   Future<MovideskTicketInfo?> createOrFetchTicketAfterCreate({
     required String token,
     required MovideskPersonInfo person,
@@ -231,6 +236,7 @@ class MovideskApiService {
     return createdTicket;
   }
 
+  /// Método/função _formatMovideskDate: executa a lógica descrita por sua implementação.
   String _formatMovideskDate(DateTime? date) {
     if (date == null) return '';
     final yyyy = date.year.toString().padLeft(4, '0');

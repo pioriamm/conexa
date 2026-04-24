@@ -14,7 +14,9 @@ import 'package:flutter/foundation.dart'
 ///   options: DefaultFirebaseOptions.currentPlatform,
 /// );
 /// ```
+/// Classe utilitária que centraliza as opções do Firebase por plataforma.
 class DefaultFirebaseOptions {
+  /// Retorna as opções do Firebase compatíveis com a plataforma atual.
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;

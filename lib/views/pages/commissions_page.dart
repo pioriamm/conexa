@@ -1,12 +1,15 @@
 part of 'home_pages.dart';
 
+/// Classe CommissionsPage: descreve sua responsabilidade no fluxo da aplicação.
 class CommissionsPage extends StatefulWidget {
   const CommissionsPage({super.key});
 
   @override
+  /// Método/função createState: executa a lógica descrita por sua implementação.
   State<CommissionsPage> createState() => _CommissionsPageState();
 }
 
+/// Classe _CommissionsPageState: descreve sua responsabilidade no fluxo da aplicação.
 class _CommissionsPageState extends State<CommissionsPage> {
   static const int _pageSize = 20;
   String? _adminVendaName;
@@ -27,11 +30,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
       ScrollController();
 
   @override
+  /// Método/função dispose: executa a lógica descrita por sua implementação.
   void dispose() {
     _commissionsHorizontalScrollController.dispose();
     super.dispose();
   }
 
+  /// Método/função _pickAdminVenda: executa a lógica descrita por sua implementação.
   Future<void> _pickAdminVenda() async {
     await _pickAndStore(
       onPicked: (name, bytes, isCsv) async {
@@ -48,6 +53,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _pickAdminCobranca: executa a lógica descrita por sua implementação.
   Future<void> _pickAdminCobranca() async {
     await _pickAndStore(
       onPicked: (name, bytes, isCsv) async {
@@ -64,6 +70,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _pickClientesDetalhes: executa a lógica descrita por sua implementação.
   Future<void> _pickClientesDetalhes() async {
     await _pickAndStore(
       onPicked: (name, bytes, isCsv) async {
@@ -80,6 +87,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _pickAndStore: executa a lógica descrita por sua implementação.
   Future<void> _pickAndStore({
     required Future<void> Function(String name, Uint8List bytes, bool isCsv)
         onPicked,
@@ -117,6 +125,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     }
   }
 
+  /// Método/função _process: executa a lógica descrita por sua implementação.
   Future<void> _process() async {
     if (_adminVendaBytes == null ||
         _adminCobrancaBytes == null ||
@@ -201,6 +210,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     final filteredRows = _rows;
     final totalPages = filteredRows.isEmpty
@@ -325,6 +335,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _buildUploadCards: executa a lógica descrita por sua implementação.
   Widget _buildUploadCards() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -415,6 +426,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _buildUploadCard: executa a lógica descrita por sua implementação.
   Widget _buildUploadCard({
     required int stepNumber,
     required IconData icon,
@@ -539,6 +551,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _buildCommissionsEmptyState: executa a lógica descrita por sua implementação.
   Widget _buildCommissionsEmptyState() {
     return Container(
       decoration: BoxDecoration(
@@ -575,6 +588,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _buildCommissionsTable: executa a lógica descrita por sua implementação.
   Widget _buildCommissionsTable(List<AdminCobrancaRow> rows) {
     const visibleColumns = [
       'ID da Cobrança',
@@ -649,6 +663,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _buildCommissionsFooter: executa a lógica descrita por sua implementação.
   Widget _buildCommissionsFooter({
     required int totalCount,
     required int totalPages,
@@ -717,6 +732,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  /// Método/função _formatGridValue: executa a lógica descrita por sua implementação.
   String _formatGridValue(String column, String value) {
     const moneyColumns = {
       'Faturamento',
@@ -745,6 +761,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return formatReal(value);
   }
 
+  /// Método/função _formatInt: executa a lógica descrita por sua implementação.
   String _formatInt(int value) {
     final s = value.toString();
     final buf = StringBuffer();
