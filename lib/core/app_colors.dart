@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// Classe AppColors: descreve sua responsabilidade no fluxo da aplicação.
 class AppColors {
   static const verdeEscuro = Color(0xFF103339);
   static const verdeClaro = Color(0xFF87B526);

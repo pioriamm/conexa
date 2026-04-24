@@ -5,6 +5,7 @@ import '../core/app_colors.dart';
 import '../viewmodels/navigation_view_model.dart';
 import 'widgets/sidebar_button.dart';
 
+/// Classe AppShell: descreve sua responsabilidade no fluxo da aplicação.
 class AppShell extends StatelessWidget {
   const AppShell({
     super.key,
@@ -16,6 +17,7 @@ class AppShell extends StatelessWidget {
   final Widget commissionsPage;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,

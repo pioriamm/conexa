@@ -1,7 +1,9 @@
 part of '../views/pages/home_pages.dart';
 
+/// Enumeração StepStatus: descreve sua responsabilidade no fluxo da aplicação.
 enum StepStatus { pendente, carregando, pronto, processando }
 
+/// Classe ClientesDetalhesRow: descreve sua responsabilidade no fluxo da aplicação.
 class ClientesDetalhesRow {
   const ClientesDetalhesRow({
     required this.id,
@@ -22,6 +24,7 @@ class ClientesDetalhesRow {
   final String customSistema;
 }
 
+/// Classe ChargeDateResult: descreve sua responsabilidade no fluxo da aplicação.
 class ChargeDateResult {
   const ChargeDateResult({
     required this.date,
@@ -36,8 +39,10 @@ class ChargeDateResult {
 // Utilitários
 // =============================================================================
 
+/// Método/função digitsOnly: executa a lógica descrita por sua implementação.
 String digitsOnly(String input) => input.replaceAll(RegExp(r'\D'), '');
 
+/// Método/função _parseFlexibleDate: executa a lógica descrita por sua implementação.
 DateTime? _parseFlexibleDate(String raw) {
   final text = raw.trim();
   if (text.isEmpty) return null;
@@ -63,6 +68,7 @@ DateTime? _parseFlexibleDate(String raw) {
   return null;
 }
 
+/// Método/função _adjustToNextBusinessDay: executa a lógica descrita por sua implementação.
 ChargeDateResult _adjustToNextBusinessDay(DateTime date) {
   var adjusted = DateTime(date.year, date.month, date.day);
   var wasTransferred = false;
@@ -75,10 +81,12 @@ ChargeDateResult _adjustToNextBusinessDay(DateTime date) {
   return ChargeDateResult(date: adjusted, wasTransferred: wasTransferred);
 }
 
+/// Método/função _isWeekend: executa a lógica descrita por sua implementação.
 bool _isWeekend(DateTime date) {
   return date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
 }
 
+/// Método/função _isBrazilNationalHoliday: executa a lógica descrita por sua implementação.
 bool _isBrazilNationalHoliday(DateTime date) {
   final d = DateTime(date.year, date.month, date.day);
   final easter = _easterSunday(d.year);
@@ -103,6 +111,7 @@ bool _isBrazilNationalHoliday(DateTime date) {
   return holidays.contains(d);
 }
 
+/// Método/função _easterSunday: executa a lógica descrita por sua implementação.
 DateTime _easterSunday(int year) {
   final a = year % 19;
   final b = year ~/ 100;
@@ -122,6 +131,7 @@ DateTime _easterSunday(int year) {
   return DateTime(year, month, day);
 }
 
+/// Método/função formattedCnpj: executa a lógica descrita por sua implementação.
 String formattedCnpj(String digits) {
   if (digits.length != 14) {
     return digits;
@@ -129,6 +139,7 @@ String formattedCnpj(String digits) {
   return '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12, 14)}';
 }
 
+/// Método/função normalizeEmails: executa a lógica descrita por sua implementação.
 String normalizeEmails(String input) {
   final matches = RegExp(
     r'[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}',
@@ -145,6 +156,7 @@ String normalizeEmails(String input) {
   return emails.join('; ');
 }
 
+/// Método/função formatFirstPhone: executa a lógica descrita por sua implementação.
 String formatFirstPhone(String input) {
   if (input.trim().isEmpty) return '';
 
@@ -330,6 +342,7 @@ const Map<String, String> _servicoItemDePara = {
   '1º recorrencia': '1º recorrencia',
 };
 
+/// Método/função _mapServicoItem: executa a lógica descrita por sua implementação.
 String _mapServicoItem(String raw) {
   final normalized = normalizeKey(raw).replaceAll('º', 'o');
   for (final entry in _servicoItemDePara.entries) {
@@ -373,6 +386,7 @@ Future<Map<String, String>> parseAdminVendaBytes(Uint8List bytes) async {
   return mapped;
 }
 
+/// Método/função _adminCobrancaColumnCandidates: executa a lógica descrita por sua implementação.
 List<String> _adminCobrancaColumnCandidates(String column) {
   switch (column) {
     case 'ID Cliente':
@@ -500,6 +514,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
 // Parsing CSV (streaming linha-a-linha, memória constante)
 // =============================================================================
 
+/// Método/função _decodeCsvText: executa a lógica descrita por sua implementação.
 String _decodeCsvText(Uint8List bytes) {
   if (bytes.length >= 3 &&
       bytes[0] == 0xEF &&
@@ -514,6 +529,7 @@ String _decodeCsvText(Uint8List bytes) {
   }
 }
 
+/// Método/função _detectCsvSeparator: executa a lógica descrita por sua implementação.
 String _detectCsvSeparator(String text) {
   final sample = text.length > 2048 ? text.substring(0, 2048) : text;
   final nlIdx = sample.indexOf('\n');
@@ -526,6 +542,7 @@ String _detectCsvSeparator(String text) {
   return ',';
 }
 
+/// Método/função _parseCsvLine: executa a lógica descrita por sua implementação.
 List<String> _parseCsvLine(String line, String sep) {
   final fields = <String>[];
   final buf = StringBuffer();
@@ -564,6 +581,7 @@ List<String> _parseCsvLine(String line, String sep) {
   return fields;
 }
 
+/// Método/função _csvHeaderMap: executa a lógica descrita por sua implementação.
 Map<String, int> _csvHeaderMap(List<String> headerRow) {
   final map = <String, int>{};
   for (var i = 0; i < headerRow.length; i++) {
@@ -589,11 +607,13 @@ int? _csvFindColumn(Map<String, int> header, List<String> candidates) {
   return null;
 }
 
+/// Método/função _csvField: executa a lógica descrita por sua implementação.
 String _csvField(List<String> row, int index) {
   if (index < 0 || index >= row.length) return '';
   return row[index].trim();
 }
 
+/// Método/função _csvSplitLines: executa a lógica descrita por sua implementação.
 List<String> _csvSplitLines(String text) {
   return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
 }
@@ -871,6 +891,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   return mapped;
 }
 
+/// Método/função _headerMap: executa a lógica descrita por sua implementação.
 Map<String, int> _headerMap(List<excel.Data?> headerRow) {
   final map = <String, int>{};
   for (var i = 0; i < headerRow.length; i++) {
@@ -905,6 +926,7 @@ int? _findColumn(Map<String, int> header, List<String> candidates) {
   return null;
 }
 
+/// Método/função _cellValue: executa a lógica descrita por sua implementação.
 String _cellValue(List<excel.Data?> row, int index) {
   try {
     if (index < 0 || index >= row.length) return '';
@@ -924,6 +946,7 @@ String _cellValue(List<excel.Data?> row, int index) {
 }
 
 
+/// Método/função normalizeClientId: executa a lógica descrita por sua implementação.
 String normalizeClientId(String input) {
   final trimmed = input.trim();
   if (trimmed.isEmpty) return '';
@@ -938,6 +961,7 @@ String normalizeClientId(String input) {
 }
 
 
+/// Método/função clientIdLookupKeys: executa a lógica descrita por sua implementação.
 List<String> clientIdLookupKeys(String input) {
   final raw = input.trim();
   if (raw.isEmpty) return const [];
@@ -997,6 +1021,7 @@ String formatReal(String raw) {
   return 'R\$ ${negative ? '-' : ''}${buffer.toString()},$decPart';
 }
 
+/// Método/função formatDateBr: executa a lógica descrita por sua implementação.
 String? formatDateBr(DateTime? value) {
   if (value == null) return null;
   final day = value.day.toString().padLeft(2, '0');
@@ -1004,6 +1029,7 @@ String? formatDateBr(DateTime? value) {
   return '$day/$month/${value.year}';
 }
 
+/// Método/função normalizeKey: executa a lógica descrita por sua implementação.
 String normalizeKey(String input) {
   var text = input.toLowerCase();
 

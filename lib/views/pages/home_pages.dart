@@ -27,11 +27,13 @@ part '../../core/home_page_helpers.dart';
 // UI helpers
 // =============================================================================
 
+/// Classe _StatusBadge: descreve sua responsabilidade no fluxo da aplicação.
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
   final StepStatus status;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     late final String label;
     late final Color fg;
@@ -89,11 +91,13 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+/// Classe _RegraBadge: descreve sua responsabilidade no fluxo da aplicação.
 class _RegraBadge extends StatelessWidget {
   const _RegraBadge({required this.value});
   final String value;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     final is3 = value.trim() == '3';
     final fg = is3 ? AppColors.primary : AppColors.textSecondary;
@@ -117,11 +121,13 @@ class _RegraBadge extends StatelessWidget {
   }
 }
 
+/// Classe _GrupoChip: descreve sua responsabilidade no fluxo da aplicação.
 class _GrupoChip extends StatelessWidget {
   const _GrupoChip({required this.value});
   final String value;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     if (value.trim().isEmpty) {
       return const Text(
@@ -153,11 +159,13 @@ class _GrupoChip extends StatelessWidget {
   }
 }
 
+/// Classe _CobrarBadge: descreve sua responsabilidade no fluxo da aplicação.
 class _CobrarBadge extends StatelessWidget {
   const _CobrarBadge({required this.value});
   final String value;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     final normalized = value.trim().toLowerCase();
     final shouldCharge = normalized == 'realizar cobrança';
@@ -192,6 +200,7 @@ class _CobrarBadge extends StatelessWidget {
   }
 }
 
+/// Classe _TicketCell: descreve sua responsabilidade no fluxo da aplicação.
 class _TicketCell extends StatelessWidget {
   const _TicketCell({
     required this.ticketId,
@@ -201,6 +210,7 @@ class _TicketCell extends StatelessWidget {
   final String ticketStatus;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     if (ticketId.isEmpty) {
       return const Text(
@@ -254,6 +264,7 @@ class _TicketCell extends StatelessWidget {
   }
 }
 
+/// Classe _PageIconButton: descreve sua responsabilidade no fluxo da aplicação.
 class _PageIconButton extends StatelessWidget {
   const _PageIconButton({
     required this.tooltip,
@@ -266,6 +277,7 @@ class _PageIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
@@ -295,6 +307,7 @@ class _PageIconButton extends StatelessWidget {
 // Modelos
 // =============================================================================
 
+/// Classe LocalizaRow: descreve sua responsabilidade no fluxo da aplicação.
 class LocalizaRow {
   LocalizaRow({
     required this.cnpj,
@@ -307,6 +320,7 @@ class LocalizaRow {
   final String modalidade;
 }
 
+/// Classe ConexaRow: descreve sua responsabilidade no fluxo da aplicação.
 class ConexaRow {
   ConexaRow({
     required this.idCobranca,
@@ -327,6 +341,7 @@ class ConexaRow {
   final String telefone;
 }
 
+/// Classe OutputRow: descreve sua responsabilidade no fluxo da aplicação.
 class OutputRow {
   OutputRow({
     required this.idCobranca,
@@ -365,6 +380,7 @@ class OutputRow {
   final String telefone;
 }
 
+/// Classe AdminCobrancaRow: descreve sua responsabilidade no fluxo da aplicação.
 class AdminCobrancaRow {
   AdminCobrancaRow(this.values);
 
@@ -429,6 +445,7 @@ class AdminCobrancaRow {
     'Custom Sistema',
   ];
 
+  /// Método/função toValues: executa a lógica descrita por sua implementação.
   List<String> toValues() => columns.map((c) => values[c] ?? '').toList();
 }
 

@@ -1,12 +1,15 @@
 part of 'home_pages.dart';
 
+/// Classe ProcessingPage: descreve sua responsabilidade no fluxo da aplicação.
 class ProcessingPage extends StatefulWidget {
   const ProcessingPage({super.key});
 
   @override
+  /// Método/função createState: executa a lógica descrita por sua implementação.
   State<ProcessingPage> createState() => _ProcessingPageState();
 }
 
+/// Classe _ProcessingPageState: descreve sua responsabilidade no fluxo da aplicação.
 class _ProcessingPageState extends State<ProcessingPage>
     with TickerProviderStateMixin {
   String _appVersion = '';
@@ -47,6 +50,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   List<OutputRow> _resultRows = [];
 
   @override
+  /// Método/função initState: executa a lógica descrita por sua implementação.
   void initState() {
     super.initState();
     _statusFadeController = AnimationController(
@@ -60,6 +64,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     _loadAppVersion();
   }
 
+  /// Método/função _loadAppVersion: executa a lógica descrita por sua implementação.
   Future<void> _loadAppVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) return;
@@ -71,6 +76,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   }
 
   @override
+  /// Método/função dispose: executa a lógica descrita por sua implementação.
   void dispose() {
     _processTimer?.cancel();
     _cnpjFilterController.dispose();
@@ -117,6 +123,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     return rows;
   }
 
+  /// Método/função _syncStatusAnimations: executa a lógica descrita por sua implementação.
   void _syncStatusAnimations() {
     if (_loading) {
       if (!_statusFadeController.isAnimating) {
@@ -139,6 +146,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
   }
 
+  /// Método/função _formatDuration: executa a lógica descrita por sua implementação.
   String _formatDuration(Duration d) {
     final h = d.inHours.toString().padLeft(2, '0');
     final m = (d.inMinutes % 60).toString().padLeft(2, '0');
@@ -146,6 +154,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     return '$h:$m:$s';
   }
 
+  /// Método/função _pickFile: executa a lógica descrita por sua implementação.
   Future<void> _pickFile(bool isLocaliza) async {
     if (isLocaliza) {
       setState(() {
@@ -274,6 +283,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
   }
 
+  /// Método/função _process: executa a lógica descrita por sua implementação.
   Future<void> _process() async {
     if (_localizaRows == null || _conexaRows == null) {
       setState(() {
@@ -424,10 +434,12 @@ class _ProcessingPageState extends State<ProcessingPage>
     }
   }
 
+  /// Método/função _isWhiteLabel: executa a lógica descrita por sua implementação.
   bool _isWhiteLabel(String modalidade) {
     return normalizeKey(modalidade).contains('whitelabel');
   }
 
+  /// Método/função _buildChargeDate: executa a lógica descrita por sua implementação.
   ChargeDateResult? _buildChargeDate(String vencimento, int graceDays) {
     final dueDate = _parseFlexibleDate(vencimento);
     if (dueDate == null) return null;
@@ -435,6 +447,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     return _adjustToNextBusinessDay(baseDate);
   }
 
+  /// Método/função _shouldPerformCharge: executa a lógica descrita por sua implementação.
   bool _shouldPerformCharge(DateTime? chargeDate) {
     if (chargeDate == null) return false;
     final today = DateTime.now();
@@ -447,6 +460,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     return chargeDateOnly.isBefore(todayOnly);
   }
 
+  /// Método/função _isToday: executa a lógica descrita por sua implementação.
   bool _isToday(DateTime? date) {
     if (date == null) return false;
     final today = DateTime.now();
@@ -455,12 +469,14 @@ class _ProcessingPageState extends State<ProcessingPage>
     return dateOnly == todayOnly;
   }
 
+  /// Método/função _buildChargeLabel: executa a lógica descrita por sua implementação.
   String _buildChargeLabel(DateTime? chargeDate) {
     if (_shouldPerformCharge(chargeDate)) return 'Realizar cobrança';
     if (_isToday(chargeDate)) return 'Vence hoje';
     return 'No prazo';
   }
 
+  /// Método/função _isTicketClosedStatus: executa a lógica descrita por sua implementação.
   bool _isTicketClosedStatus(String status) {
     final normalized = normalizeKey(status);
     return normalized.contains('fechado') ||
@@ -468,6 +484,7 @@ class _ProcessingPageState extends State<ProcessingPage>
         normalized.contains('cancelado');
   }
 
+  /// Método/função _resolveModalidade: executa a lógica descrita por sua implementação.
   String _resolveModalidade(String? modalidade) {
     final value = modalidade?.trim() ?? '';
     if (value.isEmpty) {
@@ -486,9 +503,11 @@ class _ProcessingPageState extends State<ProcessingPage>
   // Export CSV
   // ---------------------------------------------------------------------------
 
+  /// Método/função _exportCsv: executa a lógica descrita por sua implementação.
   void _exportCsv() {
     if (_resultRows.isEmpty) return;
 
+    /// Método/função escape: executa a lógica descrita por sua implementação.
     String escape(String s) {
       if (s.contains('"') || s.contains(';') || s.contains('\n')) {
         final escaped = s.replaceAll('"', '""');
@@ -575,6 +594,7 @@ class _ProcessingPageState extends State<ProcessingPage>
   // ---------------------------------------------------------------------------
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -611,6 +631,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildHeader: executa a lógica descrita por sua implementação.
   Widget _buildHeader() {
     return Container(
       decoration: const BoxDecoration(
@@ -681,6 +702,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildTopBadge: executa a lógica descrita por sua implementação.
   Widget _buildTopBadge() {
     final ready = _localizaRows != null && _conexaRows != null;
     final label = ready ? 'Pronto para processar' : 'Aguardando arquivos';
@@ -718,6 +740,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildIntro: executa a lógica descrita por sua implementação.
   Widget _buildIntro() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,6 +795,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildStepCards: executa a lógica descrita por sua implementação.
   Widget _buildStepCards() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -866,6 +890,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildStepCard: executa a lógica descrita por sua implementação.
   Widget _buildStepCard({
     required int stepNumber,
     required IconData icon,
@@ -999,6 +1024,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildStepBody: executa a lógica descrita por sua implementação.
   Widget _buildStepBody({
     required StepStatus status,
     required String? filename,
@@ -1170,6 +1196,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildStatusBar: executa a lógica descrita por sua implementação.
   Widget _buildStatusBar() {
     _syncStatusAnimations();
     final visible = _loading ||
@@ -1282,6 +1309,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildErrorBanner: executa a lógica descrita por sua implementação.
   Widget _buildErrorBanner() {
     return Container(
       decoration: BoxDecoration(
@@ -1313,6 +1341,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildResultsCard: executa a lógica descrita por sua implementação.
   Widget _buildResultsCard() {
     if (_resultRows.isEmpty) {
       return _buildEmptyState();
@@ -1384,6 +1413,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildEmptyState: executa a lógica descrita por sua implementação.
   Widget _buildEmptyState() {
     return Container(
       decoration: BoxDecoration(
@@ -1434,6 +1464,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildResultsHeader: executa a lógica descrita por sua implementação.
   Widget _buildResultsHeader() {
     final filteredCount = _filteredResultRows.length;
     final hasFilter = _cnpjFilter.trim().isNotEmpty;
@@ -1529,6 +1560,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildResultsTable: executa a lógica descrita por sua implementação.
   Widget _buildResultsTable(List<OutputRow> pageRows) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1760,6 +1792,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildCopyableDataCell: executa a lógica descrita por sua implementação.
   DataCell _buildCopyableDataCell({
     required Widget child,
     required String valueToCopy,
@@ -1771,12 +1804,14 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _openTicketLink: executa a lógica descrita por sua implementação.
   void _openTicketLink(String url) {
     final normalizedUrl = url.trim();
     if (normalizedUrl.isEmpty) return;
     html.window.open(normalizedUrl, '_blank');
   }
 
+  /// Método/função _copyCellValue: executa a lógica descrita por sua implementação.
   Future<void> _copyCellValue(String value) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
@@ -1793,6 +1828,7 @@ class _ProcessingPageState extends State<ProcessingPage>
       );
   }
 
+  /// Método/função _buildProcessingSpinnerIcon: executa a lógica descrita por sua implementação.
   Widget _buildProcessingSpinnerIcon({
     required Color color,
     required double size,
@@ -1813,6 +1849,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildResultsFooter: executa a lógica descrita por sua implementação.
   Widget _buildResultsFooter({
     required int totalCount,
     required int totalPages,
@@ -1886,6 +1923,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _buildFilteredEmptyState: executa a lógica descrita por sua implementação.
   Widget _buildFilteredEmptyState() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
@@ -1918,6 +1956,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     );
   }
 
+  /// Método/função _formatInt: executa a lógica descrita por sua implementação.
   String _formatInt(int value) {
     final s = value.toString();
     final buf = StringBuffer();

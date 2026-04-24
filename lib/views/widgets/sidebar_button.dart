@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_colors.dart';
 
+/// Classe SidebarButton: descreve sua responsabilidade no fluxo da aplicação.
 class SidebarButton extends StatelessWidget {
   const SidebarButton({
     super.key,
@@ -17,6 +18,7 @@ class SidebarButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  /// Método/função build: executa a lógica descrita por sua implementação.
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

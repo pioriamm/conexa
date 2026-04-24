@@ -5,6 +5,7 @@ import 'app.dart';
 import 'firebase_options.dart';
 import 'views/pages/home_pages.dart';
 
+/// Método/função main: executa a lógica descrita por sua implementação.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
