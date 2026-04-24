@@ -24,7 +24,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   List<AdminCobrancaRow> _rows = [];
   int _currentPage = 0;
   final ScrollController _commissionsHorizontalScrollController =
-      ScrollController();
+  ScrollController();
 
   @override
   void dispose() {
@@ -82,7 +82,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
   Future<void> _pickAndStore({
     required Future<void> Function(String name, Uint8List bytes, bool isCsv)
-        onPicked,
+    onPicked,
   }) async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -117,13 +117,33 @@ class _CommissionsPageState extends State<CommissionsPage> {
     }
   }
 
+  /// Normaliza o ID Cliente para uma chave de string consistente.
+  ///
+  /// Problema resolvido: no Excel o ID pode vir como `11567.0` (float),
+  /// `11567` (int) ou `"11567"` (string). Todos devem casar.
+  /// Esta função:
+  ///   - Remove espaços em branco.
+  ///   - Remove o sufixo `.0` quando o valor é um número inteiro em float.
+  ///   - Retorna string vazia para valores nulos/inválidos.
+  String _normalizeClientId(dynamic raw) {
+    if (raw == null) return '';
+    var s = raw.toString().trim();
+    if (s.isEmpty) return '';
+    // Remove ".0" final típico de floats convertidos de planilha.
+    if (s.endsWith('.0')) {
+      s = s.substring(0, s.length - 2);
+    }
+    return s;
+  }
+
   Future<void> _process() async {
-    if (_adminVendaBytes == null ||
-        _adminCobrancaBytes == null ||
+    if (_adminCobrancaBytes == null ||
+        _adminVendaBytes == null ||
         _clientesDetalhesBytes == null) {
       setState(() {
         _hasError = true;
-        _status = 'Envie os arquivos na ordem: Admin Cobrança, Admin Venda e Tenex, antes de processar.';
+        _status =
+        'Envie os arquivos na ordem: Admin Cobrança, Admin Venda e Tenex, antes de processar.';
       });
       return;
     }
@@ -135,45 +155,51 @@ class _CommissionsPageState extends State<CommissionsPage> {
     });
 
     try {
+      // Admin Venda -> Map<ID Cliente, Serviço/Item>
+      // (parseAdminVendaBytes já deve retornar esse mapa; se não, veja nota abaixo.)
       final vendaMap = _adminVendaIsCsv
           ? await parseAdminVendaCsvBytes(_adminVendaBytes!)
           : await parseAdminVendaBytes(_adminVendaBytes!);
+
+      // Admin Cobrança -> lista de linhas (base principal do grid)
       final cobrancaRows = _adminCobrancaIsCsv
           ? await parseAdminCobrancaCsvBytes(_adminCobrancaBytes!)
           : await parseAdminCobrancaBytes(_adminCobrancaBytes!);
+
+      // Tenex -> Map<id, ClientesDetalhesRow>
       final clientesDetalhes = _clientesDetalhesIsCsv
           ? await parseClientesDetalhesCsvBytes(_clientesDetalhesBytes!)
           : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
 
+      // Normaliza as chaves dos dois mapas auxiliares uma única vez
+      // para garantir consistência na comparação.
+      final vendaByKey = <String, String>{};
+      vendaMap.forEach((k, v) {
+        final nk = _normalizeClientId(k);
+        if (nk.isNotEmpty) vendaByKey[nk] = v;
+      });
+
+      final tenexByKey = <String, ClientesDetalhesRow>{};
+      clientesDetalhes.forEach((k, v) {
+        final nk = _normalizeClientId(k);
+        if (nk.isNotEmpty) tenexByKey[nk] = v;
+      });
+
+      // ==============================================================
+      // JOIN:
+      // Para cada linha do Admin Cobrança, a chave é o "ID Cliente".
+      //   - Se existir no Admin Venda (Cliente ID), pega "Serviço/Item".
+      //   - Se existir no Tenex (id), pega grupo, vendedor, parceiro,
+      //     iss retido, quantidade cnpj e custom sistema.
+      // ==============================================================
       for (final row in cobrancaRows) {
-        final clienteIdKeys = clientIdLookupKeys(row.idCliente);
-        String? mapped;
-        for (final key in clienteIdKeys) {
-          mapped = vendaMap[key];
-          if (mapped != null && mapped.isNotEmpty) break;
-        }
-        row.servicoItem = mapped ?? '';
+        final key = _normalizeClientId(row.idCliente);
 
-        ClientesDetalhesRow? detalhes;
-        var bestScore = -1;
-        for (final key in clienteIdKeys) {
-          final candidate = clientesDetalhes[key];
-          if (candidate == null) continue;
+        // Admin Venda -> Serviço/Item
+        row.servicoItem = key.isEmpty ? '' : (vendaByKey[key] ?? '');
 
-          final score = [
-            candidate.grupo,
-            candidate.vendedor,
-            candidate.parceiro,
-            candidate.customSistema,
-          ].where((field) => field.trim().isNotEmpty).length;
-
-          if (score > bestScore) {
-            detalhes = candidate;
-            bestScore = score;
-          }
-
-          if (score == 4) break;
-        }
+        // Tenex -> demais campos
+        final detalhes = key.isEmpty ? null : tenexByKey[key];
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
@@ -184,9 +210,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
       if (!mounted) return;
       setState(() {
-        _rows = [..._rows, ...cobrancaRows];
+        // BUG CORRIGIDO: antes era `_rows = [..._rows, ...cobrancaRows]`,
+        // que duplicava o grid a cada "Processar novamente".
+        _rows = cobrancaRows;
         _currentPage = 0;
-        _status = 'Processamento concluído (${_rows.length} linhas) usando apenas a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
+        _status =
+        'Processamento concluído (${_rows.length} linhas) usando apenas a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
@@ -210,8 +239,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final endIdx = (startIdx + _pageSize) > filteredRows.length
         ? filteredRows.length
         : startIdx + _pageSize;
-    final pageRows =
-        filteredRows.isEmpty ? <AdminCobrancaRow>[] : filteredRows.sublist(startIdx, endIdx);
+    final pageRows = filteredRows.isEmpty
+        ? <AdminCobrancaRow>[]
+        : filteredRows.sublist(startIdx, endIdx);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -232,7 +262,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Carregue as planilhas na ordem: Admin Cobrança (principal), Admin Venda (base) e Tenex (base) para preencher Serviço/Item, Grupo, Vendedor, Parceiro, ISS Retido, Quantidade CNPJ e Custom Sistema.',
+                'Carregue as planilhas na ordem: Admin Cobrança (principal), Admin Venda (base) e Tenex (base). O join usa apenas ID Cliente = Cliente ID = id para trazer Serviço/Item, Grupo, Vendedor, Parceiro e Custom Sistema.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -246,7 +276,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 Text(
                   _status,
                   style: TextStyle(
-                    color: _hasError ? AppColors.danger : AppColors.textSecondary,
+                    color:
+                    _hasError ? AppColors.danger : AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -285,11 +316,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
                             ),
                             const SizedBox(width: 10),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
                                 color: AppColors.surfaceAlt,
                                 borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: AppColors.borderLight),
+                                border:
+                                Border.all(color: AppColors.borderLight),
                               ),
                               child: Text(
                                 '${_formatInt(_rows.length)} registros',
@@ -336,10 +369,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
             description: 'Arquivo principal com a chave ID Cliente.',
             status: _loading && _adminCobrancaName == null
                 ? StepStatus.carregando
-                : (_adminCobrancaName != null ? StepStatus.pronto : StepStatus.pendente),
+                : (_adminCobrancaName != null
+                ? StepStatus.pronto
+                : StepStatus.pendente),
             filename: _adminCobrancaName,
-            buttonLabel:
-                _adminCobrancaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
+            buttonLabel: _adminCobrancaName == null
+                ? 'Selecionar arquivo'
+                : 'Trocar arquivo',
             onPressed: _loading ? null : _pickAdminCobranca,
           ),
           _buildUploadCard(
@@ -349,27 +385,33 @@ class _CommissionsPageState extends State<CommissionsPage> {
             description: 'Base com Cliente ID e Serviço/Item.',
             status: _loading && _adminVendaName == null
                 ? StepStatus.carregando
-                : (_adminVendaName != null ? StepStatus.pronto : StepStatus.pendente),
+                : (_adminVendaName != null
+                ? StepStatus.pronto
+                : StepStatus.pendente),
             filename: _adminVendaName,
-            buttonLabel: _adminVendaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
-            onPressed: _loading || _adminCobrancaName == null ? null : _pickAdminVenda,
+            buttonLabel:
+            _adminVendaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
+            onPressed:
+            _loading || _adminCobrancaName == null ? null : _pickAdminVenda,
           ),
           _buildUploadCard(
             stepNumber: 3,
             icon: Icons.groups_outlined,
             title: 'Tenex (base)',
             description:
-                'Base com ID e dados de Grupo, Vendedor, Parceiro e Custom Sistema.',
+            'Base com id e dados de Grupo, Vendedor, Parceiro e Custom Sistema.',
             status: _loading && _clientesDetalhesName == null
                 ? StepStatus.carregando
                 : (_clientesDetalhesName != null
-                    ? StepStatus.pronto
-                    : StepStatus.pendente),
+                ? StepStatus.pronto
+                : StepStatus.pendente),
             filename: _clientesDetalhesName,
             buttonLabel: _clientesDetalhesName == null
                 ? 'Selecionar arquivo'
                 : 'Trocar arquivo',
-            onPressed: _loading || _adminCobrancaName == null || _adminVendaName == null
+            onPressed: _loading ||
+                _adminCobrancaName == null ||
+                _adminVendaName == null
                 ? null
                 : _pickClientesDetalhes,
           ),
@@ -381,8 +423,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
             status: _loading
                 ? StepStatus.processando
                 : (_rows.isNotEmpty ? StepStatus.pronto : StepStatus.pendente),
-            filename: _rows.isEmpty ? null : '${_formatInt(_rows.length)} linhas processadas',
-            buttonLabel: _rows.isEmpty ? 'Processar comissões' : 'Processar novamente',
+            filename: _rows.isEmpty
+                ? null
+                : '${_formatInt(_rows.length)} linhas processadas',
+            buttonLabel:
+            _rows.isEmpty ? 'Processar comissões' : 'Processar novamente',
             onPressed: _loading ? null : _process,
             primary: true,
           ),
@@ -496,7 +541,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.description_outlined, size: 16, color: AppColors.textSecondary),
+                const Icon(Icons.description_outlined,
+                    size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -517,21 +563,22 @@ class _CommissionsPageState extends State<CommissionsPage> {
             width: double.infinity,
             child: primary
                 ? FilledButton.icon(
-                    onPressed: onPressed,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.play_arrow, size: 18),
-                    label: Text(buttonLabel),
-                  )
+              onPressed: onPressed,
+              icon: _loading
+                  ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              )
+                  : const Icon(Icons.play_arrow, size: 18),
+              label: Text(buttonLabel),
+            )
                 : ElevatedButton.icon(
-                    onPressed: onPressed,
-                    icon: const Icon(Icons.upload_file_outlined, size: 18),
-                    label: Text(buttonLabel),
-                  ),
+              onPressed: onPressed,
+              icon: const Icon(Icons.upload_file_outlined, size: 18),
+              label: Text(buttonLabel),
+            ),
           ),
         ],
       ),
@@ -577,6 +624,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   Widget _buildCommissionsTable(List<AdminCobrancaRow> rows) {
     const visibleColumns = [
       'ID da Cobrança',
+      'ID Cliente',
       'CPF/CNPJ',
       'Razão Social Cliente',
       'Grupo',
@@ -608,36 +656,37 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 constraints: BoxConstraints(minWidth: tableWidth),
                 child: SingleChildScrollView(
                   child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(AppColors.surfaceAlt),
-                  headingTextStyle: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                  columns: visibleColumns
-                      .map((c) => DataColumn(label: Text(c)))
-                      .toList(),
-                  rows: rows.map((row) {
-                    return DataRow(
-                      cells: List.generate(visibleColumns.length, (index) {
-                        final column = visibleColumns[index];
-                        final value = _formatGridValue(
-                          column,
-                          row.values[column] ?? '',
-                        );
-                        return DataCell(
-                          SizedBox(
-                            width: 180,
-                            child: Text(
-                              value,
-                              overflow: TextOverflow.ellipsis,
+                    headingRowColor:
+                    MaterialStateProperty.all(AppColors.surfaceAlt),
+                    headingTextStyle: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                    columns: visibleColumns
+                        .map((c) => DataColumn(label: Text(c)))
+                        .toList(),
+                    rows: rows.map((row) {
+                      return DataRow(
+                        cells: List.generate(visibleColumns.length, (index) {
+                          final column = visibleColumns[index];
+                          final value = _formatGridValue(
+                            column,
+                            row.values[column] ?? '',
+                          );
+                          return DataCell(
+                            SizedBox(
+                              width: 180,
+                              child: Text(
+                                value,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        );
-                      }),
-                    );
-                  }).toList(),
+                          );
+                        }),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
@@ -671,12 +720,15 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _PageIconButton(
             tooltip: 'Primeira página',
             icon: Icons.first_page,
-            onPressed: safePage > 0 ? () => setState(() => _currentPage = 0) : null,
+            onPressed:
+            safePage > 0 ? () => setState(() => _currentPage = 0) : null,
           ),
           _PageIconButton(
             tooltip: 'Página anterior',
             icon: Icons.chevron_left,
-            onPressed: safePage > 0 ? () => setState(() => _currentPage = safePage - 1) : null,
+            onPressed: safePage > 0
+                ? () => setState(() => _currentPage = safePage - 1)
+                : null,
           ),
           const SizedBox(width: 6),
           Container(
