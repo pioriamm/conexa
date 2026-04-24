@@ -22,7 +22,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
   String _status = '';
   bool _hasError = false;
   List<AdminCobrancaRow> _rows = [];
-  Map<String, LinhaDetalhaTenex> _tenexByKey = {};
+  List<AdminCobrancaRow> _gridRows = [];
+  List<Map<String, String>> _tenexJsonList = [];
   int _tenexProcessed = 0;
   int _tenexTotal = 0;
   int _currentPage = 0;
@@ -54,6 +55,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _adminVendaBytes = bytes;
           _adminVendaIsCsv = isCsv;
           if (previewRows != null) {
+            _gridRows = previewRows;
             _rows = previewRows;
             _currentPage = 0;
             _status =
@@ -88,20 +90,27 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final parsed = isCsv
             ? await parseClientesDetalhesCsvBytes(bytes)
             : await parseClientesDetalhesBytes(bytes);
-        final normalizedTenex = <String, LinhaDetalhaTenex>{};
-        parsed.forEach((k, v) {
-          for (final nk in clientIdLookupKeys(k)) {
-            if (nk.isNotEmpty) {
-              normalizedTenex[nk] = v;
-            }
-          }
+
+        final tenexJson = <Map<String, String>>[];
+        final addedIds = <String>{};
+        parsed.forEach((_, value) {
+          if (value.id.isEmpty || addedIds.contains(value.id)) return;
+          addedIds.add(value.id);
+          tenexJson.add({
+            'id': value.id,
+            'grupo': value.grupo,
+            'vendedor': value.vendedor,
+            'parceiro': value.parceiro,
+            'customSistema': value.customSistema,
+          });
         });
+
         setState(() {
           _clientesDetalhesName = name;
           _clientesDetalhesBytes = bytes;
           _clientesDetalhesIsCsv = isCsv;
-          _tenexByKey = normalizedTenex;
-          _status = 'Base Tenex carregada (${parsed.length} IDs).';
+          _tenexJsonList = tenexJson;
+          _status = 'Base Tenex carregada (${tenexJson.length} IDs).';
         });
       },
     );
@@ -154,7 +163,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   Future<void> _process() async {
-    if (_rows.isEmpty || _tenexByKey.isEmpty) {
+    if (_gridRows.isEmpty || _tenexJsonList.isEmpty) {
       setState(() {
         _hasError = true;
         _status =
@@ -172,7 +181,19 @@ class _CommissionsPageState extends State<CommissionsPage> {
     });
 
     try {
-      final gridRows = List<AdminCobrancaRow>.from(_rows);
+      final gridRows = _gridRows
+          .map((row) => AdminCobrancaRow(Map<String, String>.from(row.values)))
+          .toList();
+
+      final tenexById = <String, Map<String, String>>{};
+      for (final item in _tenexJsonList) {
+        final id = item['id'] ?? '';
+        for (final key in clientIdLookupKeys(id)) {
+          if (key.isNotEmpty) {
+            tenexById[key] = item;
+          }
+        }
+      }
 
       if (!mounted) return;
       setState(() {
@@ -183,15 +204,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
       for (var index = 0; index < gridRows.length; index++) {
         final row = gridRows[index];
-        final detalhes = _lookupByClientId(_tenexByKey, row.idCliente);
-        row.grupo = detalhes?.grupo ?? '';
-        row.vendedor = detalhes?.vendedor ?? '';
-        row.parceiro = detalhes?.parceiro ?? '';
-        row.customSistema = detalhes?.customSistema ?? '';
+        final detalhes = _lookupByClientId(tenexById, row.idCliente);
+        row.grupo = detalhes?['grupo'] ?? '';
+        row.vendedor = detalhes?['vendedor'] ?? '';
+        row.parceiro = detalhes?['parceiro'] ?? '';
+        row.customSistema = detalhes?['customSistema'] ?? '';
 
         if (!mounted) return;
         setState(() {
-          _rows[index] = row;
           _tenexProcessed = index + 1;
           _status =
               'Processando Tenex: $_tenexProcessed de $_tenexTotal registros.';
@@ -204,10 +224,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
       if (!mounted) return;
       setState(() {
+        _gridRows = gridRows;
         _rows = gridRows;
         _currentPage = 0;
         _status =
-            'Processamento concluído (${_rows.length} linhas) com atualização por ID Cliente usando a base Tenex em memória.';
+            'Processamento concluído (${_rows.length} linhas). Grid recarregado com os dados do Tenex por ID.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
@@ -295,6 +316,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
                     color:
                     _hasError ? AppColors.danger : AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (_loading) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 8,
+                    value: _tenexTotal > 0 ? _tenexProcessed / _tenexTotal : null,
+                    backgroundColor: AppColors.surfaceAlt,
+                    color: AppColors.primary,
                   ),
                 ),
               ],
