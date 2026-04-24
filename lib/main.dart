@@ -3313,6 +3313,22 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   Widget _buildCommissionsTable(List<AdminCobrancaRow> rows) {
+    const visibleColumns = [
+      'ID da Cobrança',
+      'CPF/CNPJ',
+      'Razão Social Cliente',
+      'Status',
+      'Valor',
+      'Valor Recebido',
+      'Vencimento',
+      'Quitação',
+      'Serviço/Item',
+      'Grupo',
+      'Vendedor',
+      'Parceiro',
+      'Custom Sistema',
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final tableWidth = constraints.maxWidth;
@@ -3337,13 +3353,17 @@ class _CommissionsPageState extends State<CommissionsPage> {
                     fontWeight: FontWeight.w600,
                     color: AppColors.textSecondary,
                   ),
-                  columns: AdminCobrancaRow.columns.map((c) => DataColumn(label: Text(c))).toList(),
+                  columns: visibleColumns
+                      .map((c) => DataColumn(label: Text(c)))
+                      .toList(),
                   rows: rows.map((row) {
-                    final values = row.toValues();
                     return DataRow(
-                      cells: List.generate(values.length, (index) {
-                        final column = AdminCobrancaRow.columns[index];
-                        final value = _formatGridValue(column, values[index]);
+                      cells: List.generate(visibleColumns.length, (index) {
+                        final column = visibleColumns[index];
+                        final value = _formatGridValue(
+                          column,
+                          row.values[column] ?? '',
+                        );
                         return DataCell(
                           SizedBox(
                             width: 180,
