@@ -117,23 +117,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
     }
   }
 
-  /// Normaliza o ID Cliente para uma chave de string consistente.
-  ///
-  /// Problema resolvido: no Excel o ID pode vir como `11567.0` (float),
-  /// `11567` (int) ou `"11567"` (string). Todos devem casar.
-  /// Esta função:
-  ///   - Remove espaços em branco.
-  ///   - Remove o sufixo `.0` quando o valor é um número inteiro em float.
-  ///   - Retorna string vazia para valores nulos/inválidos.
-  String _normalizeClientId(dynamic raw) {
-    if (raw == null) return '';
-    var s = raw.toString().trim();
-    if (s.isEmpty) return '';
-    // Remove ".0" final típico de floats convertidos de planilha.
-    if (s.endsWith('.0')) {
-      s = s.substring(0, s.length - 2);
+  T? _lookupByClientId<T>(Map<String, T> source, dynamic rawId) {
+    if (rawId == null) return null;
+    for (final key in clientIdLookupKeys(rawId.toString())) {
+      final found = source[key];
+      if (found != null) return found;
     }
-    return s;
+    return null;
   }
 
   Future<void> _process() async {
@@ -175,14 +165,16 @@ class _CommissionsPageState extends State<CommissionsPage> {
       // para garantir consistência na comparação.
       final vendaByKey = <String, String>{};
       vendaMap.forEach((k, v) {
-        final nk = _normalizeClientId(k);
-        if (nk.isNotEmpty) vendaByKey[nk] = v;
+        for (final nk in clientIdLookupKeys(k)) {
+          if (nk.isNotEmpty) vendaByKey[nk] = v;
+        }
       });
 
       final tenexByKey = <String, ClientesDetalhesRow>{};
       clientesDetalhes.forEach((k, v) {
-        final nk = _normalizeClientId(k);
-        if (nk.isNotEmpty) tenexByKey[nk] = v;
+        for (final nk in clientIdLookupKeys(k)) {
+          if (nk.isNotEmpty) tenexByKey[nk] = v;
+        }
       });
 
       // ==============================================================
@@ -193,13 +185,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
       //     iss retido, quantidade cnpj e custom sistema.
       // ==============================================================
       for (final row in cobrancaRows) {
-        final key = _normalizeClientId(row.idCliente);
-
         // Admin Venda -> Serviço/Item
-        row.servicoItem = key.isEmpty ? '' : (vendaByKey[key] ?? '');
+        final servicoItem = _lookupByClientId(vendaByKey, row.idCliente);
+        row.servicoItem = servicoItem ?? '';
 
         // Tenex -> demais campos
-        final detalhes = key.isEmpty ? null : tenexByKey[key];
+        final detalhes = _lookupByClientId(tenexByKey, row.idCliente);
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
