@@ -22,6 +22,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   String _status = '';
   bool _hasError = false;
   List<AdminCobrancaRow> _rows = [];
+  Map<String, LinhaDetalhaTenex> _tenexByKey = {};
   int _tenexProcessed = 0;
   int _tenexTotal = 0;
   int _currentPage = 0;
@@ -87,10 +88,19 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final parsed = isCsv
             ? await parseClientesDetalhesCsvBytes(bytes)
             : await parseClientesDetalhesBytes(bytes);
+        final normalizedTenex = <String, LinhaDetalhaTenex>{};
+        parsed.forEach((k, v) {
+          for (final nk in clientIdLookupKeys(k)) {
+            if (nk.isNotEmpty) {
+              normalizedTenex[nk] = v;
+            }
+          }
+        });
         setState(() {
           _clientesDetalhesName = name;
           _clientesDetalhesBytes = bytes;
           _clientesDetalhesIsCsv = isCsv;
+          _tenexByKey = normalizedTenex;
           _status = 'Base Tenex carregada (${parsed.length} IDs).';
         });
       },
@@ -144,13 +154,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   Future<void> _process() async {
-    if (_adminCobrancaBytes == null ||
-        _adminVendaBytes == null ||
-        _clientesDetalhesBytes == null) {
+    if (_rows.isEmpty || _tenexByKey.isEmpty) {
       setState(() {
         _hasError = true;
         _status =
-        'Envie os arquivos na ordem: Admin Cobrança, Admin Venda e Tenex, antes de processar.';
+            'Carregue o grid (Admin Cobrança + Admin Venda) e a base Tenex antes de processar.';
       });
       return;
     }
@@ -164,41 +172,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
     });
 
     try {
-      final vendaMap = _adminVendaIsCsv
-          ? await parseAdminVendaCsvBytes(_adminVendaBytes!)
-          : await parseAdminVendaBytes(_adminVendaBytes!);
-
-      final cobrancaRows = await _buildRowsWithVenda(
-        adminCobrancaBytes: _adminCobrancaBytes!,
-        adminCobrancaIsCsv: _adminCobrancaIsCsv,
-        vendaMap: vendaMap,
-      );
-
-      final clientesDetalhes = _clientesDetalhesIsCsv
-          ? await parseClientesDetalhesCsvBytes(_clientesDetalhesBytes!)
-          : await parseClientesDetalhesBytes(_clientesDetalhesBytes!);
-
-      final tenexByKey = <String, LinhaDetalhaTenex>{};
-      clientesDetalhes.forEach((k, v) {
-        for (final nk in clientIdLookupKeys(k)) {
-          if (nk.isNotEmpty) {
-            tenexByKey[nk] = v;
-          }
-        }
-      });
+      final gridRows = List<AdminCobrancaRow>.from(_rows);
 
       if (!mounted) return;
       setState(() {
-        _rows = cobrancaRows;
-        _currentPage = 0;
-        _tenexTotal = cobrancaRows.length;
+        _tenexTotal = gridRows.length;
         _status =
-            'Base pronta. Iniciando enriquecimento Tenex registro a registro...';
+            'Base pronta. Atualizando o grid com dados Tenex em memória...';
       });
 
-      for (var index = 0; index < cobrancaRows.length; index++) {
-        final row = cobrancaRows[index];
-        final detalhes = _lookupByClientId(tenexByKey, row.idCliente);
+      for (var index = 0; index < gridRows.length; index++) {
+        final row = gridRows[index];
+        final detalhes = _lookupByClientId(_tenexByKey, row.idCliente);
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
         row.parceiro = detalhes?.parceiro ?? '';
@@ -219,10 +204,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
       if (!mounted) return;
       setState(() {
-        _rows = cobrancaRows;
+        _rows = gridRows;
         _currentPage = 0;
         _status =
-            'Processamento concluído (${_rows.length} linhas) usando a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
+            'Processamento concluído (${_rows.length} linhas) com atualização por ID Cliente usando a base Tenex em memória.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
