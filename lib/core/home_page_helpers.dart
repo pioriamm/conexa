@@ -547,7 +547,7 @@ int? _csvFindColumn(Map<String, int> header, List<String> candidates) {
   for (final entry in header.entries) {
     for (final candidate in candidates) {
       final normalized = normalizeKey(candidate);
-      if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
+      if (_isCompatibleHeaderKey(entry.key, normalized)) {
         return entry.value;
       }
     }
@@ -843,13 +843,27 @@ int? _findColumn(Map<String, int> header, List<String> candidates) {
   for (final entry in header.entries) {
     for (final candidate in candidates) {
       final normalized = normalizeKey(candidate);
-      if (entry.key.contains(normalized) || normalized.contains(entry.key)) {
+      if (_isCompatibleHeaderKey(entry.key, normalized)) {
         return entry.value;
       }
     }
   }
 
   return null;
+}
+
+
+bool _isCompatibleHeaderKey(String headerKey, String candidateKey) {
+  if (headerKey.isEmpty || candidateKey.isEmpty) return false;
+
+  if (headerKey == candidateKey) return true;
+
+  final minLength = headerKey.length < candidateKey.length
+      ? headerKey.length
+      : candidateKey.length;
+  if (minLength < 4) return false;
+
+  return headerKey.contains(candidateKey) || candidateKey.contains(headerKey);
 }
 
 String _cellValue(List<excel.Data?> row, int index) {
