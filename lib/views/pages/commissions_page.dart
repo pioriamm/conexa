@@ -154,10 +154,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
         }
         row.servicoItem = mapped ?? '';
 
-        final cpfCnpjKeys = clientIdLookupKeys(row.values['CPF/CNPJ'] ?? '');
         ClientesDetalhesRow? detalhes;
         var bestScore = -1;
-        for (final key in [...clienteIdKeys, ...cpfCnpjKeys]) {
+        for (final key in clienteIdKeys) {
           final candidate = clientesDetalhes[key];
           if (candidate == null) continue;
 
@@ -187,7 +186,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       setState(() {
         _rows = [..._rows, ...cobrancaRows];
         _currentPage = 0;
-        _status = 'Processamento concluído (${_rows.length} linhas) usando a chave ID Cliente ↔ Cliente ID ↔ ID.';
+        _status = 'Processamento concluído (${_rows.length} linhas) usando apenas a chave ID Cliente entre Admin Cobrança, Admin Venda e Tenex.';
         _loading = false;
       });
     } on ProcessingException catch (e) {
@@ -755,4 +754,3 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return buf.toString();
   }
 }
-

@@ -439,12 +439,10 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
   }
 
   final header = _headerMap(table.rows.first);
-  final idCol = _findColumn(header, ['ID', 'Id', 'ID Cliente', 'Cliente ID']);
+  final idCol = _findColumn(header, ['ID Cliente', 'Cliente ID']);
   final grupoCol = _findColumn(header, ['Grupo']);
   final vendedorCol = _findColumn(header, ['Vendedor']);
   final parceiroCol = _findColumn(header, ['Parceiro']);
-  final codigoCol = _findColumn(header, ['Código', 'Codigo', 'codigo']);
-  final cnpjCol = _findColumn(header, ['CNPJ', 'CPF/CNPJ', 'cpf/cnpj']);
   final issRetidoCol = _findColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
   final quantidadeCnpjCol =
       _findColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
@@ -457,7 +455,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
       parceiroCol == null ||
       customSistemaCol == null) {
     throw const ProcessingException(
-      'A planilha Tenex precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+      'A planilha Tenex precisa conter as colunas ID Cliente, Grupo, Vendedor, Parceiro e Custom Sistema.',
     );
   }
 
@@ -480,17 +478,6 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesBytes(
 
     for (final key in clientIdLookupKeys(idRaw)) {
       mapped[key] = detalhes;
-    }
-
-    if (codigoCol != null) {
-      for (final key in clientIdLookupKeys(_cellValue(row, codigoCol))) {
-        mapped.putIfAbsent(key, () => detalhes);
-      }
-    }
-    if (cnpjCol != null) {
-      for (final key in clientIdLookupKeys(_cellValue(row, cnpjCol))) {
-        mapped.putIfAbsent(key, () => detalhes);
-      }
     }
   }
   return mapped;
@@ -814,12 +801,10 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
   }
 
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
-  final idCol = _csvFindColumn(header, ['ID', 'Id', 'ID Cliente', 'Cliente ID']);
+  final idCol = _csvFindColumn(header, ['ID Cliente', 'Cliente ID']);
   final grupoCol = _csvFindColumn(header, ['Grupo']);
   final vendedorCol = _csvFindColumn(header, ['Vendedor']);
   final parceiroCol = _csvFindColumn(header, ['Parceiro']);
-  final codigoCol = _csvFindColumn(header, ['Código', 'Codigo', 'codigo']);
-  final cnpjCol = _csvFindColumn(header, ['CNPJ', 'CPF/CNPJ', 'cpf/cnpj']);
   final issRetidoCol =
       _csvFindColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
   final quantidadeCnpjCol =
@@ -833,7 +818,7 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
       parceiroCol == null ||
       customSistemaCol == null) {
     throw const ProcessingException(
-      'O CSV Tenex precisa conter as colunas ID, Grupo, Vendedor, Parceiro e Custom Sistema.',
+      'O CSV Tenex precisa conter as colunas ID Cliente, Grupo, Vendedor, Parceiro e Custom Sistema.',
     );
   }
 
@@ -856,16 +841,6 @@ Future<Map<String, ClientesDetalhesRow>> parseClientesDetalhesCsvBytes(
     );
     for (final key in clientIdLookupKeys(idRaw)) {
       mapped[key] = detalhes;
-    }
-    if (codigoCol != null) {
-      for (final key in clientIdLookupKeys(_csvField(row, codigoCol))) {
-        mapped.putIfAbsent(key, () => detalhes);
-      }
-    }
-    if (cnpjCol != null) {
-      for (final key in clientIdLookupKeys(_csvField(row, cnpjCol))) {
-        mapped.putIfAbsent(key, () => detalhes);
-      }
     }
   }
   return mapped;
