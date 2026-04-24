@@ -2908,9 +2908,24 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
         final cpfCnpjKeys = clientIdLookupKeys(row.values['CPF/CNPJ'] ?? '');
         ClientesDetalhesRow? detalhes;
+        var bestScore = -1;
         for (final key in [...clienteIdKeys, ...cpfCnpjKeys]) {
-          detalhes = clientesDetalhes[key];
-          if (detalhes != null) break;
+          final candidate = clientesDetalhes[key];
+          if (candidate == null) continue;
+
+          final score = [
+            candidate.grupo,
+            candidate.vendedor,
+            candidate.parceiro,
+            candidate.customSistema,
+          ].where((field) => field.trim().isNotEmpty).length;
+
+          if (score > bestScore) {
+            detalhes = candidate;
+            bestScore = score;
+          }
+
+          if (score == 4) break;
         }
         row.grupo = detalhes?.grupo ?? '';
         row.vendedor = detalhes?.vendedor ?? '';
@@ -3317,16 +3332,16 @@ class _CommissionsPageState extends State<CommissionsPage> {
       'ID da Cobrança',
       'CPF/CNPJ',
       'Razão Social Cliente',
-      'Status',
+      'Grupo',
+      'Parceiro',
+      'Vendedor',
+      'Serviço/Item',
+      'Custom Sistema',
       'Valor',
       'Valor Recebido',
       'Vencimento',
       'Quitação',
-      'Serviço/Item',
-      'Grupo',
-      'Vendedor',
-      'Parceiro',
-      'Custom Sistema',
+      'Status',
     ];
 
     return LayoutBuilder(
@@ -3464,6 +3479,19 @@ class _CommissionsPageState extends State<CommissionsPage> {
       'Valor Desconto',
       'Valor NFSe com Desconto',
     };
+
+    if (column == 'Status') {
+      final normalized = normalizeKey(value);
+      if (normalized == normalizeKey('Quitada (Gerada por Negociação)')) {
+        return 'Quitada';
+      }
+      return value;
+    }
+
+    if (column == 'Valor Recebido' &&
+        (value.trim().isEmpty || normalizeKey(value) == 'null')) {
+      return 'R\$ 0,00';
+    }
 
     if (!moneyColumns.contains(column)) return value;
     return formatReal(value);
