@@ -423,13 +423,29 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
   final header = _headerMap(table.rows.first);
   final idCol = _findColumn(header, ['ID Cliente', 'Cliente ID']);
   final grupoCol = _findColumn(header, ['Grupo']);
-  final vendedorCol = _findColumn(header, ['Vendedor']);
-  final parceiroCol = _findColumn(header, ['Parceiro']);
+  final vendedorCol = _findColumn(header, [
+    'Vendedor',
+    'Nome Vendedor',
+    'Vendedor Responsável',
+    'Consultor',
+  ]);
+  final parceiroCol = _findColumn(header, [
+    'Parceiro',
+    'Nome Parceiro',
+    'Cobrança Parceiro',
+    'Cobranca Parceiro',
+  ]);
   final issRetidoCol = _findColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
   final quantidadeCnpjCol =
       _findColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
-  final customSistemaCol =
-      _findColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom']);
+  final customSistemaCol = _findColumn(header, [
+    'Custom Sistema',
+    'Custom_sistema',
+    'Custom',
+    'Sistema',
+    'Sistemas',
+    'Nome Sistema',
+  ]);
 
   if (idCol == null ||
       grupoCol == null ||
@@ -782,9 +798,26 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
   final header = _csvHeaderMap(_parseCsvLine(lines.first, sep));
   final idCol = _csvFindColumn(header, ['ID Cliente', 'Cliente ID', 'id']);
   final grupoCol = _csvFindColumn(header, ['grupo']);
-  final vendedorCol = _csvFindColumn(header, ['vendedor']);
-  final parceiroCol = _csvFindColumn(header, ['parceiro']);
-  final customSistemaCol = _csvFindColumn(header, ['Custom Sistema', 'Custom_sistema', 'Custom','custom sistema']);
+  final vendedorCol = _csvFindColumn(header, [
+    'vendedor',
+    'nome vendedor',
+    'vendedor responsavel',
+    'consultor',
+  ]);
+  final parceiroCol = _csvFindColumn(header, [
+    'parceiro',
+    'nome parceiro',
+    'cobranca parceiro',
+  ]);
+  final customSistemaCol = _csvFindColumn(header, [
+    'Custom Sistema',
+    'Custom_sistema',
+    'Custom',
+    'custom sistema',
+    'sistema',
+    'sistemas',
+    'nome sistema',
+  ]);
 
   if (idCol == null ||
       grupoCol == null ||
