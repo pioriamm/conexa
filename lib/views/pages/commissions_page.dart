@@ -87,23 +87,35 @@ class _CommissionsPageState extends State<CommissionsPage> {
   Future<void> _pickClientesDetalhes() async {
     await _pickAndStore(
       onPicked: (name, bytes, isCsv) async {
+        print('=== PICK ===');
+        print('name=$name, isCsv=$isCsv');
+        print('primeiros bytes: ${bytes.take(4).toList()}');
         final parsed = isCsv
             ? await parseClientesDetalhesCsvBytes(bytes)
             : await parseClientesDetalhesBytes(bytes);
 
-        final tenexJson = <Map<String, String>>[];
-        final addedIds = <String>{};
+        // Agrupa por id, mantendo sempre a versão mais completa
+        final byId = <String, Map<String, String>>{};
         parsed.forEach((_, value) {
-          if (value.id.isEmpty || addedIds.contains(value.id)) return;
-          addedIds.add(value.id);
-          tenexJson.add({
-            'id': value.id,
+          final id = value.id.trim();
+          if (id.isEmpty) return;
+
+          final candidate = <String, String>{
+            'id': id,
             'grupo': value.grupo,
             'vendedor': value.vendedor,
             'parceiro': value.parceiro,
             'customSistema': value.customSistema,
-          });
+          };
+
+          final existing = byId[id];
+          if (existing == null ||
+              _scoreCompleteness(candidate) > _scoreCompleteness(existing)) {
+            byId[id] = candidate;
+          }
         });
+
+        final tenexJson = byId.values.toList(growable: false);
 
         setState(() {
           _clientesDetalhesName = name;
@@ -114,6 +126,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
         });
       },
     );
+  }
+
+  /// Conta quantos campos relevantes (fora o `id`) estão preenchidos.
+  /// Usado para escolher a versão mais completa quando há duplicatas.
+  int _scoreCompleteness(Map<String, String> m) {
+    return m.entries
+        .where((e) => e.key != 'id' && e.value.trim().isNotEmpty)
+        .length;
   }
 
   Future<void> _pickAndStore({
@@ -186,8 +206,21 @@ class _CommissionsPageState extends State<CommissionsPage> {
           .toList();
 
       final tenexById = <String, Map<String, String>>{};
+      // 1. Quantas versões do 11567 existem na lista bruta?
+      final versoes = _tenexJsonList.where((i) => i['id'] == '11567').toList();
+      print('Total de versões do 11567: ${versoes.length}');
+      for (var i = 0; i < versoes.length; i++) {
+        print('Versão $i: ${versoes[i]}');
+      }
+
+// 2. O que está no map final na chave '11567'?
+      print('No map: ${tenexById['11567']}');
+
+// 3. Existem outras chaves no map que contenham 11567?
+      final chavesRelacionadas = tenexById.keys.where((k) => k.contains('11567')).toList();
+      print('Chaves com 11567: $chavesRelacionadas');
       for (final item in _tenexJsonList) {
-        final id = item['id'] ?? '';
+        final id = (item['id'] ?? '').toString();
         for (final key in clientIdLookupKeys(id)) {
           if (key.isNotEmpty) {
             tenexById[key] = item;
@@ -389,7 +422,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                       const Divider(height: 1, color: AppColors.borderLight),
                       _buildCommissionsTable(pageRows),
                       const Divider(height: 1, color: AppColors.borderLight),
-                      _buildCommissionsFooter(
+                      _contadorPaginasRodape(
                         totalCount: filteredRows.length,
                         totalPages: totalPages,
                         safePage: safePage,
@@ -751,7 +784,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
-  Widget _buildCommissionsFooter({
+  Widget _contadorPaginasRodape({
     required int totalCount,
     required int totalPages,
     required int safePage,

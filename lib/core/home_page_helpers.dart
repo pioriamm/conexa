@@ -408,8 +408,8 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaBytes(Uint8List bytes) async {
 }
 
 Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
-  Uint8List bytes,
-) async {
+    Uint8List bytes,
+    ) async {
   await _yield();
   final file = _decodeExcel(bytes);
   if (file.tables.isEmpty) {
@@ -421,26 +421,37 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
   }
 
   final header = _headerMap(table.rows.first);
-  final idCol = _findColumn(header, ['ID Cliente', 'Cliente ID']);
-  final grupoCol = _findColumn(header, ['Grupo']);
+
+  // Aceita variações com/sem espaço, case e acentos diferentes.
+  final idCol = _findColumn(header, [
+    'id',
+    'ID',
+    'ID Cliente',
+    'Cliente ID',
+    'idCliente',
+    'id_cliente',
+  ]);
+  final grupoCol = _findColumn(header, ['grupo', 'Grupo']);
   final vendedorCol = _findColumn(header, [
+    'vendedor',
     'Vendedor',
     'Nome Vendedor',
     'Vendedor Responsável',
     'Consultor',
   ]);
   final parceiroCol = _findColumn(header, [
+    'parceiro',
     'Parceiro',
     'Nome Parceiro',
     'Cobrança Parceiro',
     'Cobranca Parceiro',
   ]);
-  final issRetidoCol = _findColumn(header, ['ISS Retido', 'ISS retido', 'Retém ISS']);
-  final quantidadeCnpjCol =
-      _findColumn(header, ['Quantidade CNPJ', 'Quantidade de CNPJ', 'quantidade cnpj']);
   final customSistemaCol = _findColumn(header, [
+    'custom sistema',
     'Custom Sistema',
+    'customSistema',
     'Custom_sistema',
+    'custom_sistema',
     'Custom',
     'Sistema',
     'Sistemas',
@@ -452,30 +463,74 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
       vendedorCol == null ||
       parceiroCol == null ||
       customSistemaCol == null) {
-    throw const ProcessingException(
-      'A planilha Tenex precisa conter as colunas ID Cliente, Grupo, Vendedor, Parceiro e Custom Sistema.',
+    throw ProcessingException(
+      'A planilha Tenex precisa conter as colunas ID, Grupo, Vendedor, '
+          'Parceiro e Custom Sistema. '
+          'Detectado: id=$idCol, grupo=$grupoCol, vendedor=$vendedorCol, '
+          'parceiro=$parceiroCol, customSistema=$customSistemaCol. '
+          'Cabeçalho lido: ${header.keys.toList()}',
     );
   }
 
+  print('=== PARSE TENEX ===');
+  print('Header normalizado:');
+  header.forEach((k, v) => print('  "$k" -> $v'));
+  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol');
+
+  for (var i = 1; i < table.rows.length; i++) {
+    final row = table.rows[i];
+    final idRaw = _cellValue(row, idCol!);
+    if (idRaw.contains('11567')) {
+      print('=== LINHA 11567 (i=$i, tamanho=${row.length}) ===');
+      for (var j = 0; j < row.length; j++) {
+        print('  col $j: "${row[j]?.value}"');
+      }
+      break;
+    }
+  }
   final mapped = <String, LinhaDetalhaTenex>{};
+
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
     final idRaw = _cellValue(row, idCol);
     final id = normalizeClientId(idRaw);
     if (id.isEmpty) continue;
-    final detalhes = LinhaDetalhaTenex(
+
+    final candidate = LinhaDetalhaTenex(
       id: id,
-      grupo: _cellValue(row, grupoCol),
-      vendedor: _cellValue(row, vendedorCol),
-      parceiro: _cellValue(row, parceiroCol),
-      customSistema: _cellValue(row, customSistemaCol),
+      grupo: _cellValue(row, grupoCol).trim(),
+      vendedor: _cellValue(row, vendedorCol).trim(),
+      parceiro: _cellValue(row, parceiroCol).trim(),
+      customSistema: _cellValue(row, customSistemaCol).trim(),
     );
 
-    for (final key in clientIdLookupKeys(idRaw)) {
-      mapped[key] = detalhes;
+    // Gera todas as variantes de chave para o mesmo cliente.
+    final keys = <String>{
+      ...clientIdLookupKeys(idRaw),
+      ...clientIdLookupKeys(id),
+    }..removeWhere((k) => k.isEmpty);
+
+    for (final key in keys) {
+      final existing = mapped[key];
+      if (existing == null ||
+          _scoreLinhaTenex(candidate) > _scoreLinhaTenex(existing)) {
+        mapped[key] = candidate;
+      }
     }
   }
+
   return mapped;
+}
+
+/// Conta quantos campos relevantes (fora o `id`) estão preenchidos.
+/// Usado para escolher a versão mais completa quando há duplicatas.
+int _scoreLinhaTenex(LinhaDetalhaTenex l) {
+  var score = 0;
+  if (l.grupo.isNotEmpty) score++;
+  if (l.vendedor.isNotEmpty) score++;
+  if (l.parceiro.isNotEmpty) score++;
+  if (l.customSistema.isNotEmpty) score++;
+  return score;
 }
 
 // =============================================================================
@@ -576,8 +631,37 @@ String _csvField(List<String> row, int index) {
   return row[index].trim();
 }
 
-List<String> _csvSplitLines(String text) {
-  return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+/// Quebra o texto do CSV em linhas lógicas, respeitando quebras de linha
+/// que estão dentro de campos com aspas (que devem ser preservadas como
+/// parte do mesmo registro).
+List<String> _csvSplitLogicalLines(String text) {
+  final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  final lines = <String>[];
+  final buf = StringBuffer();
+  var inQuotes = false;
+
+  for (var i = 0; i < normalized.length; i++) {
+    final ch = normalized[i];
+
+    if (ch == '"') {
+      // Aspa escapada ("") dentro de campo — não muda o estado.
+      if (inQuotes && i + 1 < normalized.length && normalized[i + 1] == '"') {
+        buf.write('""');
+        i++; // consome a segunda aspa
+        continue;
+      }
+      inQuotes = !inQuotes;
+      buf.write(ch);
+    } else if (ch == '\n' && !inQuotes) {
+      lines.add(buf.toString());
+      buf.clear();
+    } else {
+      buf.write(ch);
+    }
+  }
+
+  if (buf.isNotEmpty) lines.add(buf.toString());
+  return lines;
 }
 
 Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
@@ -589,7 +673,7 @@ Future<Map<String, LocalizaRow>> parseLocalizaCsvBytes(
   await _yield();
 
   final sep = _detectCsvSeparator(text);
-  final lines = _csvSplitLines(text);
+  final lines = _csvSplitLogicalLines(text);
   await _yield();
 
   if (lines.isEmpty) {
@@ -648,7 +732,7 @@ Future<List<ConexaRow>> parseConexaCsvBytes(
   await _yield();
 
   final sep = _detectCsvSeparator(text);
-  final lines = _csvSplitLines(text);
+  final lines = _csvSplitLogicalLines(text);
   await _yield();
 
   if (lines.isEmpty) {
@@ -717,7 +801,7 @@ Future<Map<String, String>> parseAdminVendaCsvBytes(Uint8List bytes) async {
   await _yield();
   final text = _decodeCsvText(bytes);
   final sep = _detectCsvSeparator(text);
-  final lines = _csvSplitLines(text);
+  final lines = _csvSplitLogicalLines(text);
   if (lines.isEmpty) {
     throw const ProcessingException('CSV Admin Venda está vazio.');
   }
@@ -752,7 +836,7 @@ Future<List<AdminCobrancaRow>> parseAdminCobrancaCsvBytes(
   await _yield();
   final text = _decodeCsvText(bytes);
   final sep = _detectCsvSeparator(text);
-  final lines = _csvSplitLines(text);
+  final lines = _csvSplitLogicalLines(text);
   if (lines.isEmpty) {
     throw const ProcessingException('CSV Admin Cobrança está vazio.');
   }
@@ -790,7 +874,7 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
   await _yield();
   final text = _decodeCsvText(bytes);
   final sep = _detectCsvSeparator(text);
-  final lines = _csvSplitLines(text);
+  final lines = _csvSplitLogicalLines(text);
   if (lines.isEmpty) {
     throw const ProcessingException('CSV Tenex está vazio.');
   }
@@ -827,6 +911,30 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
     throw const ProcessingException(
       'O CSV Tenex precisa conter as colunas ID Cliente, Grupo, Vendedor, Parceiro e Custom Sistema.',
     );
+  }
+
+  print('=== PARSE TENEX CSV ===');
+  print('Separador: "$sep"');
+  print('Header normalizado:');
+  header.forEach((k, v) => print('  "$k" -> $v'));
+  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol');
+
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    final row = _parseCsvLine(lines[i], sep);
+    final idRaw = _csvField(row, idCol!);
+    if (idRaw.contains('11567')) {
+      print('=== LINHA 11567 (i=$i, tamanho=${row.length}) ===');
+      for (var j = 0; j < row.length; j++) {
+        print('  col $j: "${row[j]}"');
+      }
+      print('idRaw="$idRaw"');
+      print('grupo cell ($grupoCol)="${_csvField(row, grupoCol!)}"');
+      print('vendedor cell ($vendedorCol)="${_csvField(row, vendedorCol!)}"');
+      print('parceiro cell ($parceiroCol)="${_csvField(row, parceiroCol!)}"');
+      print('customSistema cell ($customSistemaCol)="${_csvField(row, customSistemaCol!)}"');
+      break;
+    }
   }
 
   final mapped = <String, LinhaDetalhaTenex>{};
