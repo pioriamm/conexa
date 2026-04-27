@@ -1104,69 +1104,53 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }) async {
     if (transactions.isEmpty) return;
 
-    final dueDates = transactions
-        .map((row) => _tryParseDate(row.values['Vencimento'] ?? ''))
-        .whereType<DateTime>()
-        .toList()
-      ..sort();
-
-    final startDate = dueDates.isEmpty ? null : dueDates.first;
-    final endDate = dueDates.isEmpty ? null : dueDates.last;
-    final periodLabel = startDate == null || endDate == null
-        ? 'sem_periodo'
-        : '${_formatDateForName(startDate)}_${_formatDateForName(endDate)}';
-
     final workbook = excel.Excel.createExcel();
-    const reportSheetName = 'Comissionamento';
-    const detailsSheetName = 'Detalhamento';
 
-    final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null && defaultSheet != detailsSheetName) {
-      workbook.rename(defaultSheet, detailsSheetName);
-    }
-
-    final detailsSheet = workbook[detailsSheetName];
-    final reportSheet = workbook[reportSheetName];
-    workbook.setDefaultSheet(detailsSheetName);
+    // ✔ NÃO deletar sheet padrão
+    final reportSheet = workbook['Comissionamento'];
+    final detailsSheet = workbook['Detalhamento'];
 
     _appendConsolidatedSheet(
       sheet: reportSheet,
       transactions: transactions,
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null,
+      endDate: null,
     );
+
     _appendDetailsSheet(
       sheet: detailsSheet,
       transactions: transactions,
     );
 
+    if (detailsSheet.maxRows == 0) {
+      detailsSheet.appendRow(['Sem dados']);
+    }
+
     final bytes = workbook.encode();
-    if (bytes == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não foi possível gerar o arquivo Excel.')),
-      );
+
+    if (bytes == null || bytes.isEmpty) {
+      print('Erro: Excel vazio');
       return;
     }
 
-    final fileName = '${_sanitizeFileName(partner)}_$periodLabel.xlsx';
     final blob = html.Blob(
-      <dynamic>[Uint8List.fromList(bytes)],
+      [Uint8List.fromList(bytes)],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
+
     final url = html.Url.createObjectUrlFromBlob(blob);
 
     final anchor = html.AnchorElement(href: url)
-      ..setAttribute('download', fileName)
+      ..setAttribute('download', 'arquivo.xlsx')
       ..style.display = 'none';
 
     html.document.body?.append(anchor);
     anchor.click();
     anchor.remove();
 
-    Future<void>.delayed(
+    Future.delayed(
       const Duration(seconds: 1),
-      () => html.Url.revokeObjectUrl(url),
+          () => html.Url.revokeObjectUrl(url),
     );
   }
 
