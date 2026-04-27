@@ -42,13 +42,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
   bool _groupByPartner = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final ScrollController _commissionsHorizontalScrollController =
-  ScrollController();
 
   @override
   void dispose() {
     _searchController.dispose();
-    _commissionsHorizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -838,53 +835,45 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final tableWidth = constraints.maxWidth;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Scrollbar(
-            controller: _commissionsHorizontalScrollController,
-            thumbVisibility: true,
-            trackVisibility: true,
-            interactive: true,
-            child: SingleChildScrollView(
-              controller: _commissionsHorizontalScrollController,
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: tableWidth),
-                child: DataTable(
-                  headingRowColor:
-                  MaterialStateProperty.all(AppColors.surfaceAlt),
-                  headingTextStyle: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                  columns: visibleColumns
-                      .map((c) => DataColumn(label: Text(c)))
-                      .toList(),
-                  rows: rows.map((row) {
-                    return DataRow(
-                      cells: List.generate(visibleColumns.length, (index) {
-                        final column = visibleColumns[index];
-                        final value = _formatGridValue(
-                          column,
-                          row.values[column] ?? '',
-                        );
-                        final minWidth = math.max<double>(
-                          120,
-                          (value.length * 9).toDouble(),
-                        );
-                        return DataCell(
-                          SizedBox(
-                            width: minWidth,
-                            child: Text(
-                              value,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }),
-                    );
-                  }).toList(),
+          child: _HorizontalTableScroll(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: tableWidth),
+              child: DataTable(
+                headingRowColor:
+                MaterialStateProperty.all(AppColors.surfaceAlt),
+                headingTextStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
                 ),
+                columns: visibleColumns
+                    .map((c) => DataColumn(label: Text(c)))
+                    .toList(),
+                rows: rows.map((row) {
+                  return DataRow(
+                    cells: List.generate(visibleColumns.length, (index) {
+                      final column = visibleColumns[index];
+                      final value = _formatGridValue(
+                        column,
+                        row.values[column] ?? '',
+                      );
+                      final minWidth = math.max<double>(
+                        120,
+                        (value.length * 9).toDouble(),
+                      );
+                      return DataCell(
+                        SizedBox(
+                          width: minWidth,
+                          child: Text(
+                            value,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      );
+                    }),
+                  );
+                }).toList(),
               ),
             ),
           ),
@@ -1091,5 +1080,45 @@ class _CommissionsPageState extends State<CommissionsPage> {
       buf.write(s[i]);
     }
     return buf.toString();
+  }
+}
+
+class _HorizontalTableScroll extends StatefulWidget {
+  const _HorizontalTableScroll({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_HorizontalTableScroll> createState() => _HorizontalTableScrollState();
+}
+
+class _HorizontalTableScrollState extends State<_HorizontalTableScroll> {
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      controller: _controller,
+      thumbVisibility: true,
+      trackVisibility: true,
+      interactive: true,
+      child: SingleChildScrollView(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        child: widget.child,
+      ),
+    );
   }
 }
