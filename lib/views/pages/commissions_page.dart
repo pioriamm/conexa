@@ -839,7 +839,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               constraints: BoxConstraints(minWidth: tableWidth),
               child: DataTable(
                 headingRowColor:
-                MaterialStateProperty.all(AppColors.surfaceAlt),
+                WidgetStateProperty.all(AppColors.surfaceAlt),
                 headingTextStyle: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 12,
