@@ -973,7 +973,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final partner = _displayValue(row.values['Parceiro'] ?? '');
       grouped.putIfAbsent(partner, () => []).add(row);
     }
-    final sortedKeys = grouped.keys.toList()..sort();
+    final sortedKeys = grouped.keys.toList()
+      ..sort((a, b) {
+        final sizeComparison = grouped[b]!.length.compareTo(grouped[a]!.length);
+        if (sizeComparison != 0) return sizeComparison;
+        return a.compareTo(b);
+      });
 
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -1117,7 +1122,10 @@ class _HorizontalTableScrollState extends State<_HorizontalTableScroll> {
       child: SingleChildScrollView(
         controller: _controller,
         scrollDirection: Axis.horizontal,
-        child: widget.child,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: widget.child,
+        ),
       ),
     );
   }
