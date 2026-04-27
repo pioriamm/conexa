@@ -1137,9 +1137,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final safeSheetName = _sanitizeSheetName('$partner $periodLabel');
 
     final sheet = workbook[safeSheetName];
+    final consolidatedSheet = workbook['consolidado'];
 
     final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null && defaultSheet != safeSheetName) {
+    if (defaultSheet != null &&
+        defaultSheet != safeSheetName &&
+        defaultSheet != 'consolidado') {
       try {
         workbook.delete(defaultSheet);
       } catch (_) {
@@ -1155,6 +1158,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
         visibleColumns.map((column) => row.values[column] ?? '').toList(),
       );
     }
+    _appendConsolidatedSheet(
+      sheet: consolidatedSheet,
+      transactions: transactions,
+      startDate: startDate,
+      endDate: endDate,
+    );
 
     final bytes = workbook.encode();
     if (bytes == null) {
@@ -1182,7 +1191,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
     Future<void>.delayed(
       const Duration(seconds: 1),
-          () => html.Url.revokeObjectUrl(url),
+      () => html.Url.revokeObjectUrl(url),
     );
   }
 
@@ -1213,6 +1222,119 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return '$d$m$y';
   }
 
+  void _appendConsolidatedSheet({
+    required excel.Sheet sheet,
+    required List<AdminCobrancaRow> transactions,
+    required DateTime? startDate,
+    required DateTime? endDate,
+  }) {
+    const commissionPercent = 0.2;
+    final totalsByCategory = <String, _ConsolidadoTotais>{
+      'Adesão': const _ConsolidadoTotais.zero(),
+      '1° Mensalidade': const _ConsolidadoTotais.zero(),
+      'Recorrência': const _ConsolidadoTotais.zero(),
+    };
+
+    for (final row in transactions) {
+      final category = _serviceCategory(row.values['Serviço/Item'] ?? '');
+      if (category == null) continue;
+      final carteira = _parseMoney(row.values['Valor'] ?? '');
+      final recebido = _parseMoney(row.values['Valor Recebido'] ?? '');
+      final current =
+          totalsByCategory[category] ?? const _ConsolidadoTotais.zero();
+      totalsByCategory[category] = current.add(
+        carteira: carteira,
+        recebido: recebido,
+      );
+    }
+
+    final periodText = startDate == null || endDate == null
+        ? 'Sem período'
+        : '${_formatDateBr(startDate)} a ${_formatDateBr(endDate)}';
+
+    sheet.appendRow(['Comissionamento de Parceiro Revenda']);
+    sheet.appendRow([]);
+    sheet.appendRow(['Período analisado', periodText]);
+    sheet.appendRow([]);
+    sheet.appendRow(['Resultado Mês Atual']);
+    sheet.appendRow(['Serviço', '%', 'Carteira', 'Recebido', 'Comissão']);
+
+    double totalCarteira = 0;
+    double totalRecebido = 0;
+    double totalComissao = 0;
+
+    for (final entry in totalsByCategory.entries) {
+      final carteira = entry.value.carteira;
+      final recebido = entry.value.recebido;
+      final comissao = recebido * commissionPercent;
+      totalCarteira += carteira;
+      totalRecebido += recebido;
+      totalComissao += comissao;
+      sheet.appendRow([
+        entry.key,
+        '${(commissionPercent * 100).toStringAsFixed(0)}%',
+        _formatMoney(carteira),
+        _formatMoney(recebido),
+        _formatMoney(comissao),
+      ]);
+    }
+
+    sheet.appendRow([
+      'Totais',
+      '',
+      _formatMoney(totalCarteira),
+      _formatMoney(totalRecebido),
+      _formatMoney(totalComissao),
+    ]);
+  }
+
+  String? _serviceCategory(String rawService) {
+    final normalized = normalizeKey(rawService).replaceAll('º', 'o');
+    if (normalized.contains('adesao')) return 'Adesão';
+    if (normalized.contains('1o') ||
+        normalized.contains('primeira') ||
+        normalized.contains('1 recorrencia')) {
+      return '1° Mensalidade';
+    }
+    if (normalized.contains('recorrencia') || normalized.contains('mensal')) {
+      return 'Recorrência';
+    }
+    return null;
+  }
+
+  double _parseMoney(String raw) {
+    var value = raw.trim();
+    if (value.isEmpty) return 0;
+    value = value
+        .replaceAll('R\$', '')
+        .replaceAll(' ', '')
+        .replaceAll('.', '')
+        .replaceAll(',', '.');
+    return double.tryParse(value) ?? 0;
+  }
+
+  String _formatMoney(double value) {
+    final fixed = value.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final intPart = parts.first;
+    final decimalPart = parts.last;
+    final buf = StringBuffer();
+    for (var i = 0; i < intPart.length; i++) {
+      final indexFromEnd = intPart.length - i;
+      buf.write(intPart[i]);
+      if (indexFromEnd > 1 && indexFromEnd % 3 == 1) {
+        buf.write('.');
+      }
+    }
+    return 'R\$ ${buf.toString()},$decimalPart';
+  }
+
+  String _formatDateBr(DateTime value) {
+    final d = value.day.toString().padLeft(2, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    return '$d/$m';
+  }
+
   String _sanitizeSheetName(String value) {
     final sanitized = value
         .replaceAll(RegExp(r'[:\\/?*\[\]]'), ' ')
@@ -1228,6 +1350,30 @@ class _CommissionsPageState extends State<CommissionsPage> {
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
     return sanitized.isEmpty ? 'relatorio_parceiro' : sanitized;
+  }
+}
+
+class _ConsolidadoTotais {
+  const _ConsolidadoTotais({
+    required this.carteira,
+    required this.recebido,
+  });
+
+  const _ConsolidadoTotais.zero()
+      : carteira = 0,
+        recebido = 0;
+
+  final double carteira;
+  final double recebido;
+
+  _ConsolidadoTotais add({
+    required double carteira,
+    required double recebido,
+  }) {
+    return _ConsolidadoTotais(
+      carteira: this.carteira + carteira,
+      recebido: this.recebido + recebido,
+    );
   }
 }
 
