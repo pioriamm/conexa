@@ -1301,11 +1301,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
       cell.cellStyle = style;
     }
 
-    sheet.setColWidth(0, 28);
-    sheet.setColWidth(1, 10);
-    sheet.setColWidth(2, 20);
-    sheet.setColWidth(3, 20);
-    sheet.setColWidth(4, 20);
+    sheet.setColumnWidth(0, 28);
+    sheet.setColumnWidth(1, 10);
+    sheet.setColumnWidth(2, 20);
+    sheet.setColumnWidth(3, 20);
+    sheet.setColumnWidth(4, 20);
 
     sheet.merge(
       excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
