@@ -449,6 +449,20 @@ class _CommissionsPageState extends State<CommissionsPage> {
                                   isDense: true,
                                   hintText: 'Pesquisar Grupo, Parceiro ou Vendedor',
                                   prefixIcon: const Icon(Icons.search, size: 18),
+                                  filled: true,
+                                  fillColor: AppColors.surfaceAlt,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: BorderSide.none,
+                                  ),
                                   suffixIcon: _searchQuery.trim().isEmpty
                                       ? null
                                       : IconButton(
@@ -825,44 +839,42 @@ class _CommissionsPageState extends State<CommissionsPage> {
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
                 constraints: BoxConstraints(minWidth: tableWidth),
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    headingRowColor:
-                    MaterialStateProperty.all(AppColors.surfaceAlt),
-                    headingTextStyle: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                    columns: visibleColumns
-                        .map((c) => DataColumn(label: Text(c)))
-                        .toList(),
-                    rows: rows.map((row) {
-                      return DataRow(
-                        cells: List.generate(visibleColumns.length, (index) {
-                          final column = visibleColumns[index];
-                          final value = _formatGridValue(
-                            column,
-                            row.values[column] ?? '',
-                          );
-                          final minWidth = math.max<double>(
-                            120,
-                            (value.length * 9).toDouble(),
-                          );
-                          return DataCell(
-                            SizedBox(
-                              width: minWidth,
-                              child: Text(
-                                value,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          );
-                        }),
-                      );
-                    }).toList(),
+                child: DataTable(
+                  headingRowColor:
+                  MaterialStateProperty.all(AppColors.surfaceAlt),
+                  headingTextStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
                   ),
+                  columns: visibleColumns
+                      .map((c) => DataColumn(label: Text(c)))
+                      .toList(),
+                  rows: rows.map((row) {
+                    return DataRow(
+                      cells: List.generate(visibleColumns.length, (index) {
+                        final column = visibleColumns[index];
+                        final value = _formatGridValue(
+                          column,
+                          row.values[column] ?? '',
+                        );
+                        final minWidth = math.max<double>(
+                          120,
+                          (value.length * 9).toDouble(),
+                        );
+                        return DataCell(
+                          SizedBox(
+                            width: minWidth,
+                            child: Text(
+                              value,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        );
+                      }),
+                    );
+                  }).toList(),
                 ),
               ),
             ),
@@ -965,23 +977,36 @@ class _CommissionsPageState extends State<CommissionsPage> {
     }
     final sortedKeys = grouped.keys.toList()..sort();
 
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemBuilder: (context, index) {
-        final partner = sortedKeys[index];
-        final transactions = grouped[partner]!;
-        return ExpansionTile(
-          title: Text('$partner (${transactions.length})'),
-          subtitle: const Text('Clique para expandir transações relacionadas'),
-          children: [
-            _buildCommissionsTable(transactions),
-          ],
-        );
-      },
-      separatorBuilder: (_, __) => const Divider(color: AppColors.borderLight),
-      itemCount: sortedKeys.length,
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemBuilder: (context, index) {
+          final partner = sortedKeys[index];
+          final transactions = grouped[partner]!;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: ExpansionTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide.none,
+              ),
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide.none,
+              ),
+              title: Text('$partner (${transactions.length})'),
+              subtitle: const Text('Clique para expandir transações relacionadas'),
+              children: [
+                _buildCommissionsTable(transactions),
+              ],
+            ),
+          );
+        },
+        itemCount: sortedKeys.length,
+      ),
     );
   }
 
