@@ -1104,23 +1104,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }) async {
     if (transactions.isEmpty) return;
 
-    const visibleColumns = [
-      'ID da Cobrança',
-      'ID Cliente',
-      'CPF/CNPJ',
-      'Razão Social Cliente',
-      'Grupo',
-      'Parceiro',
-      'Vendedor',
-      'Serviço/Item',
-      'Custom Sistema',
-      'Valor',
-      'Valor Recebido',
-      'Vencimento',
-      'Quitação',
-      'Status',
-    ];
-
     final dueDates = transactions
         .map((row) => _tryParseDate(row.values['Vencimento'] ?? ''))
         .whereType<DateTime>()
@@ -1134,32 +1117,21 @@ class _CommissionsPageState extends State<CommissionsPage> {
         : '${_formatDateForName(startDate)}_${_formatDateForName(endDate)}';
 
     final workbook = excel.Excel.createExcel();
-    final safeSheetName = _sanitizeSheetName('$partner $periodLabel');
-
-    final sheet = workbook[safeSheetName];
-    final consolidatedSheet = workbook['consolidado'];
-
     final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null &&
-        defaultSheet != safeSheetName &&
-        defaultSheet != 'consolidado') {
+    const reportSheetName = 'Comissionamento';
+    if (defaultSheet != null && defaultSheet != reportSheetName) {
       try {
-        workbook.delete(defaultSheet);
+        workbook.rename(defaultSheet, reportSheetName);
       } catch (_) {
-        // Ignora se o pacote não permitir deletar a sheet padrão.
+        workbook.delete(defaultSheet);
+        workbook[reportSheetName];
       }
     }
-    workbook.setDefaultSheet(safeSheetName);
+    workbook.setDefaultSheet(reportSheetName);
+    final reportSheet = workbook[reportSheetName];
 
-    sheet.appendRow(visibleColumns.toList());
-
-    for (final row in transactions) {
-      sheet.appendRow(
-        visibleColumns.map((column) => row.values[column] ?? '').toList(),
-      );
-    }
     _appendConsolidatedSheet(
-      sheet: consolidatedSheet,
+      sheet: reportSheet,
       transactions: transactions,
       startDate: startDate,
       endDate: endDate,
@@ -1228,16 +1200,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
     required DateTime? startDate,
     required DateTime? endDate,
   }) {
-    const commissionPercent = 0.2;
-    final totalsByCategory = <String, _ConsolidadoTotais>{
-      'Adesão': const _ConsolidadoTotais.zero(),
-      '1° Mensalidade': const _ConsolidadoTotais.zero(),
-      'Recorrência': const _ConsolidadoTotais.zero(),
-    };
+    final totalsByCategory = <String, _ConsolidadoTotais>{};
 
     for (final row in transactions) {
-      final category = _serviceCategory(row.values['Serviço/Item'] ?? '');
-      if (category == null) continue;
+      final category = _serviceGroupLabel(row.values['Serviço/Item'] ?? '');
       final carteira = _parseMoney(row.values['Valor'] ?? '');
       final recebido = _parseMoney(row.values['Valor Recebido'] ?? '');
       final current =
@@ -1251,44 +1217,149 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final periodText = startDate == null || endDate == null
         ? 'Sem período'
         : '${_formatDateBr(startDate)} a ${_formatDateBr(endDate)}';
+    final sortedEntries = totalsByCategory.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
 
-    sheet.appendRow(['Comissionamento de Parceiro Revenda']);
-    sheet.appendRow([]);
-    sheet.appendRow(['Período analisado', periodText]);
-    sheet.appendRow([]);
-    sheet.appendRow(['Resultado Mês Atual']);
-    sheet.appendRow(['Serviço', '%', 'Carteira', 'Recebido', 'Comissão']);
+    const titleColor = '#6C7300';
+    const sectionColor = '#A3A51A';
+    const headerColor = '#BBD56E';
+    const totalColor = '#FFD966';
+    const borderColor = '#333333';
+
+    final titleStyle = excel.CellStyle(
+      bold: true,
+      fontSize: 18,
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+      backgroundColorHex: titleColor,
+      fontColorHex: '#FFFFFF',
+    );
+    final sectionStyle = excel.CellStyle(
+      bold: true,
+      fontSize: 13,
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+      backgroundColorHex: sectionColor,
+      fontColorHex: '#FFFFFF',
+    );
+    final headerStyle = excel.CellStyle(
+      bold: true,
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+      backgroundColorHex: headerColor,
+      leftBorder: excel.Border(borderColorHex: borderColor),
+      rightBorder: excel.Border(borderColorHex: borderColor),
+      topBorder: excel.Border(borderColorHex: borderColor),
+      bottomBorder: excel.Border(borderColorHex: borderColor),
+    );
+    final labelStyle = excel.CellStyle(
+      bold: true,
+      horizontalAlign: excel.HorizontalAlign.Left,
+      verticalAlign: excel.VerticalAlign.Center,
+      backgroundColorHex: headerColor,
+      leftBorder: excel.Border(borderColorHex: borderColor),
+      rightBorder: excel.Border(borderColorHex: borderColor),
+      topBorder: excel.Border(borderColorHex: borderColor),
+      bottomBorder: excel.Border(borderColorHex: borderColor),
+    );
+    final bodyTextStyle = excel.CellStyle(
+      horizontalAlign: excel.HorizontalAlign.Left,
+      verticalAlign: excel.VerticalAlign.Center,
+      leftBorder: excel.Border(borderColorHex: borderColor),
+      rightBorder: excel.Border(borderColorHex: borderColor),
+      topBorder: excel.Border(borderColorHex: borderColor),
+      bottomBorder: excel.Border(borderColorHex: borderColor),
+    );
+    final bodyValueStyle = excel.CellStyle(
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+      leftBorder: excel.Border(borderColorHex: borderColor),
+      rightBorder: excel.Border(borderColorHex: borderColor),
+      topBorder: excel.Border(borderColorHex: borderColor),
+      bottomBorder: excel.Border(borderColorHex: borderColor),
+    );
+    final totalStyle = excel.CellStyle(
+      bold: true,
+      fontSize: 13,
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+      backgroundColorHex: totalColor,
+      leftBorder: excel.Border(borderColorHex: borderColor),
+      rightBorder: excel.Border(borderColorHex: borderColor),
+      topBorder: excel.Border(borderColorHex: borderColor),
+      bottomBorder: excel.Border(borderColorHex: borderColor),
+    );
+
+    void setCell(int row, int col, dynamic value, excel.CellStyle style) {
+      final cell = sheet.cell(
+        excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      );
+      cell.value = value;
+      cell.cellStyle = style;
+    }
+
+    sheet.setColWidth(0, 28);
+    sheet.setColWidth(1, 10);
+    sheet.setColWidth(2, 20);
+    sheet.setColWidth(3, 20);
+    sheet.setColWidth(4, 20);
+
+    sheet.merge(
+      excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
+      excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 0),
+    );
+    setCell(0, 0, 'Comissionamento de Parceiro Revenda', titleStyle);
+
+    setCell(2, 0, 'Período analisado', labelStyle);
+    sheet.merge(
+      excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2),
+      excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 2),
+    );
+    setCell(2, 1, periodText, headerStyle);
+
+    sheet.merge(
+      excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4),
+      excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 4),
+    );
+    setCell(4, 0, 'Resultado Mês Atual', sectionStyle);
+    setCell(5, 0, 'Serviço', headerStyle);
+    setCell(5, 1, '%', headerStyle);
+    setCell(5, 2, 'Carteira', headerStyle);
+    setCell(5, 3, 'Recebido', headerStyle);
+    setCell(5, 4, 'Comissão', headerStyle);
 
     double totalCarteira = 0;
     double totalRecebido = 0;
     double totalComissao = 0;
+    var line = 6;
 
-    for (final entry in totalsByCategory.entries) {
+    for (final entry in sortedEntries) {
       final carteira = entry.value.carteira;
       final recebido = entry.value.recebido;
+      final commissionPercent = _commissionPercentForCategory(entry.key);
       final comissao = recebido * commissionPercent;
       totalCarteira += carteira;
       totalRecebido += recebido;
       totalComissao += comissao;
-      sheet.appendRow([
-        entry.key,
-        '${(commissionPercent * 100).toStringAsFixed(0)}%',
-        _formatMoney(carteira),
-        _formatMoney(recebido),
-        _formatMoney(comissao),
-      ]);
+      setCell(line, 0, entry.key, bodyTextStyle);
+      setCell(line, 1, '${(commissionPercent * 100).toStringAsFixed(0)}%', bodyValueStyle);
+      setCell(line, 2, _formatMoney(carteira), bodyValueStyle);
+      setCell(line, 3, _formatMoney(recebido), bodyValueStyle);
+      setCell(line, 4, _formatMoney(comissao), bodyValueStyle);
+      line++;
     }
 
-    sheet.appendRow([
-      'Totais',
-      '',
-      _formatMoney(totalCarteira),
-      _formatMoney(totalRecebido),
-      _formatMoney(totalComissao),
-    ]);
+    sheet.merge(
+      excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: line),
+      excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: line),
+    );
+    setCell(line, 0, 'Totais', totalStyle);
+    setCell(line, 2, _formatMoney(totalCarteira), totalStyle);
+    setCell(line, 3, _formatMoney(totalRecebido), totalStyle);
+    setCell(line, 4, _formatMoney(totalComissao), totalStyle);
   }
 
-  String? _serviceCategory(String rawService) {
+  String _serviceGroupLabel(String rawService) {
     final normalized = normalizeKey(rawService).replaceAll('º', 'o');
     if (normalized.contains('adesao')) return 'Adesão';
     if (normalized.contains('1o') ||
@@ -1299,7 +1370,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
     if (normalized.contains('recorrencia') || normalized.contains('mensal')) {
       return 'Recorrência';
     }
-    return null;
+    return rawService.trim().isEmpty ? 'Outros' : _capitalizeWords(rawService);
+  }
+
+  double _commissionPercentForCategory(String category) {
+    return 0.2;
   }
 
   double _parseMoney(String raw) {
@@ -1333,15 +1408,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final d = value.day.toString().padLeft(2, '0');
     final m = value.month.toString().padLeft(2, '0');
     return '$d/$m';
-  }
-
-  String _sanitizeSheetName(String value) {
-    final sanitized = value
-        .replaceAll(RegExp(r'[:\\/?*\[\]]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (sanitized.isEmpty) return 'Relatorio';
-    return sanitized.length > 31 ? sanitized.substring(0, 31) : sanitized;
   }
 
   String _sanitizeFileName(String value) {
