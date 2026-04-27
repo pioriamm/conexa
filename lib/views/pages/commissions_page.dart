@@ -1194,7 +1194,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final carteira = _parseMoney(row.values['Valor'] ?? '');
       final recebido = _parseMoney(row.values['Valor Recebido'] ?? '');
       final status = row.values['Status'] ?? '';
-      final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0;
+      final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0.0;
       final current =
           totalsByCategory[category] ?? const _ConsolidadoTotais.zero();
       totalsByCategory[category] = current.add(
