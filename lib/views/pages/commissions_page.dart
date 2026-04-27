@@ -9,6 +9,15 @@ class CommissionsPage extends StatefulWidget {
 
 class _CommissionsPageState extends State<CommissionsPage> {
   static const int _pageSize = 20;
+  static const Set<String> _textColumns = {
+    'Razão Social Cliente',
+    'Grupo',
+    'Parceiro',
+    'Vendedor',
+    'Serviço/Item',
+    'Custom Sistema',
+    'Status',
+  };
   String? _adminVendaName;
   String? _adminCobrancaName;
   String? _clientesDetalhesName;
@@ -21,17 +30,24 @@ class _CommissionsPageState extends State<CommissionsPage> {
   bool _loading = false;
   String _status = '';
   bool _hasError = false;
+  int? _adminVendaCount;
+  int? _adminCobrancaCount;
+  int? _clientesDetalhesCount;
   List<AdminCobrancaRow> _rows = [];
   List<AdminCobrancaRow> _gridRows = [];
   List<Map<String, String>> _tenexJsonList = [];
   int _tenexProcessed = 0;
   int _tenexTotal = 0;
   int _currentPage = 0;
+  bool _groupByPartner = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   final ScrollController _commissionsHorizontalScrollController =
   ScrollController();
 
   @override
   void dispose() {
+    _searchController.dispose();
     _commissionsHorizontalScrollController.dispose();
     super.dispose();
   }
@@ -54,6 +70,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _adminVendaName = name;
           _adminVendaBytes = bytes;
           _adminVendaIsCsv = isCsv;
+          _adminVendaCount = parsed.length;
           if (previewRows != null) {
             _gridRows = previewRows;
             _rows = previewRows;
@@ -78,6 +95,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _adminCobrancaName = name;
           _adminCobrancaBytes = bytes;
           _adminCobrancaIsCsv = isCsv;
+          _adminCobrancaCount = parsed.length;
           _status = 'Admin Cobrança carregada (${parsed.length} linhas).';
         });
       },
@@ -121,6 +139,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           _clientesDetalhesName = name;
           _clientesDetalhesBytes = bytes;
           _clientesDetalhesIsCsv = isCsv;
+          _clientesDetalhesCount = tenexJson.length;
           _tenexJsonList = tenexJson;
           _status = 'Base Tenex carregada (${tenexJson.length} IDs).';
         });
@@ -300,7 +319,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredRows = _rows;
+    final filteredRows = _filteredRows();
     final totalPages = filteredRows.isEmpty
         ? 1
         : ((filteredRows.length - 1) ~/ _pageSize) + 1;
@@ -416,13 +435,62 @@ class _CommissionsPageState extends State<CommissionsPage> {
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                    _currentPage = 0;
+                                  });
+                                },
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Pesquisar Grupo, Parceiro ou Vendedor',
+                                  prefixIcon: const Icon(Icons.search, size: 18),
+                                  suffixIcon: _searchQuery.trim().isEmpty
+                                      ? null
+                                      : IconButton(
+                                    tooltip: 'Limpar busca',
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() {
+                                        _searchQuery = '';
+                                        _currentPage = 0;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.close, size: 16),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilterChip(
+                              selected: _groupByPartner,
+                              label: const Text('Agrupar parceiro'),
+                              onSelected: (value) {
+                                setState(() {
+                                  _groupByPartner = value;
+                                  _currentPage = 0;
+                                });
+                              },
+                            ),
                           ],
                         ),
                       ),
                       const Divider(height: 1, color: AppColors.borderLight),
-                      _buildCommissionsTable(pageRows),
+                      _groupByPartner
+                          ? _buildPartnerGroups(filteredRows)
+                          : _buildCommissionsTable(pageRows),
                       const Divider(height: 1, color: AppColors.borderLight),
-                      _contadorPaginasRodape(
+                      _groupByPartner
+                          ? _groupedFooter(filteredRows.length)
+                          : _contadorPaginasRodape(
                         totalCount: filteredRows.length,
                         totalPages: totalPages,
                         safePage: safePage,
@@ -455,6 +523,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 ? StepStatus.pronto
                 : StepStatus.pendente),
             filename: _adminCobrancaName,
+            subtitleCount: _adminCobrancaCount,
             buttonLabel: _adminCobrancaName == null
                 ? 'Selecionar arquivo'
                 : 'Trocar arquivo',
@@ -471,6 +540,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 ? StepStatus.pronto
                 : StepStatus.pendente),
             filename: _adminVendaName,
+            subtitleCount: _adminVendaCount,
             buttonLabel:
             _adminVendaName == null ? 'Selecionar arquivo' : 'Trocar arquivo',
             onPressed:
@@ -488,6 +558,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 ? StepStatus.pronto
                 : StepStatus.pendente),
             filename: _clientesDetalhesName,
+            subtitleCount: _clientesDetalhesCount,
             buttonLabel: _clientesDetalhesName == null
                 ? 'Selecionar arquivo'
                 : 'Trocar arquivo',
@@ -508,6 +579,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
             filename: _rows.isEmpty
                 ? null
                 : '${_formatInt(_rows.length)} linhas processadas',
+            subtitleCount: _rows.isEmpty ? null : _rows.length,
             buttonLabel:
             _rows.isEmpty ? 'Processar comissões' : 'Processar novamente',
             onPressed: _loading ||
@@ -553,6 +625,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     required String description,
     required StepStatus status,
     required String? filename,
+    required int? subtitleCount,
     required String buttonLabel,
     required VoidCallback? onPressed,
     bool primary = false,
@@ -619,6 +692,17 @@ class _CommissionsPageState extends State<CommissionsPage> {
             ),
           ),
           const SizedBox(height: 14),
+          if (subtitleCount != null) ...[
+            Text(
+              '${_formatInt(subtitleCount)} linhas',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -762,9 +846,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
                             column,
                             row.values[column] ?? '',
                           );
+                          final minWidth = math.max<double>(
+                            120,
+                            (value.length * 9).toDouble(),
+                          );
                           return DataCell(
                             SizedBox(
-                              width: 180,
+                              width: minWidth,
                               child: Text(
                                 value,
                                 overflow: TextOverflow.ellipsis,
@@ -855,6 +943,61 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
+  Widget _groupedFooter(int totalCount) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
+      child: Text(
+        '${_formatInt(totalCount)} transações filtradas e agrupadas por parceiro',
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPartnerGroups(List<AdminCobrancaRow> rows) {
+    final grouped = <String, List<AdminCobrancaRow>>{};
+    for (final row in rows) {
+      final partner = _displayValue(row.values['Parceiro'] ?? '');
+      grouped.putIfAbsent(partner, () => []).add(row);
+    }
+    final sortedKeys = grouped.keys.toList()..sort();
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      itemBuilder: (context, index) {
+        final partner = sortedKeys[index];
+        final transactions = grouped[partner]!;
+        return ExpansionTile(
+          title: Text('$partner (${transactions.length})'),
+          subtitle: const Text('Clique para expandir transações relacionadas'),
+          children: [
+            _buildCommissionsTable(transactions),
+          ],
+        );
+      },
+      separatorBuilder: (_, __) => const Divider(color: AppColors.borderLight),
+      itemCount: sortedKeys.length,
+    );
+  }
+
+  List<AdminCobrancaRow> _filteredRows() {
+    final query = normalizeKey(_searchQuery.trim());
+    if (query.isEmpty) return _rows;
+    return _rows.where((row) {
+      final grupo = normalizeKey(row.values['Grupo'] ?? '');
+      final parceiro = normalizeKey(row.values['Parceiro'] ?? '');
+      final vendedor = normalizeKey(row.values['Vendedor'] ?? '');
+      return grupo.contains(query) ||
+          parceiro.contains(query) ||
+          vendedor.contains(query);
+    }).toList();
+  }
+
   String _formatGridValue(String column, String value) {
     const moneyColumns = {
       'Faturamento',
@@ -879,8 +1022,31 @@ class _CommissionsPageState extends State<CommissionsPage> {
       return 'R\$ 0,00';
     }
 
-    if (!moneyColumns.contains(column)) return value;
+    if (!moneyColumns.contains(column)) {
+      if (_textColumns.contains(column)) {
+        return _displayValue(_capitalizeWords(value));
+      }
+      return _displayValue(value);
+    }
     return formatReal(value);
+  }
+
+  String _displayValue(String value) {
+    if (value.trim().isEmpty || normalizeKey(value) == 'null') {
+      return 'N/A';
+    }
+    return value.trim();
+  }
+
+  String _capitalizeWords(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return normalized;
+    return normalized
+        .split(RegExp(r'\s+'))
+        .map((word) {
+      if (word.isEmpty) return word;
+      return '${word[0].toUpperCase()}${word.substring(1)}';
+    }).join(' ');
   }
 
   String _formatInt(int value) {
