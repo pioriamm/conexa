@@ -435,7 +435,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: MediaQuery.of(context).size.width * 0.5),
                             Expanded(
                               child: TextField(
                                 controller: _searchController,
@@ -486,7 +486,16 @@ class _CommissionsPageState extends State<CommissionsPage> {
                             const SizedBox(width: 12),
                             FilterChip(
                               selected: _groupByPartner,
-                              label: const Text('Agrupar parceiro'),
+                              label: const Text('Agrupar Parceiro',
+                                style: TextStyle(color: Colors.white),),
+
+                              backgroundColor: const Color(0xFF103339),
+                              selectedColor: const Color(0xFF87B526),
+
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+
                               onSelected: (value) {
                                 setState(() {
                                   _groupByPartner = value;
