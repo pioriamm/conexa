@@ -1354,18 +1354,42 @@ class _CommissionsPageState extends State<CommissionsPage> {
     required excel.Sheet sheet,
     required List<AdminCobrancaRow> transactions,
   }) {
-    for (var c = 0; c < _gridColumns.length; c++) {
+    final detailsColumns = <String>[
+      ..._gridColumns,
+      '% Comissão',
+      'Comissão',
+    ];
+
+    for (var c = 0; c < detailsColumns.length; c++) {
       sheet.cell(
         excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0),
-      ).value = _gridColumns[c];
+      ).value = detailsColumns[c];
       sheet.setColumnWidth(c, 22);
     }
 
     for (var r = 0; r < transactions.length; r++) {
       final row = transactions[r].values;
       final line = r + 1;
-      for (var c = 0; c < _gridColumns.length; c++) {
-        final column = _gridColumns[c];
+      for (var c = 0; c < detailsColumns.length; c++) {
+        final column = detailsColumns[c];
+        if (column == '% Comissão') {
+          final category = _serviceGroupLabel(row['Serviço/Item'] ?? '');
+          final commissionPercent = _commissionPercentForCategory(category);
+          sheet.cell(
+            excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
+          ).value = '${(commissionPercent * 100).toStringAsFixed(0)}%';
+          continue;
+        }
+        if (column == 'Comissão') {
+          final category = _serviceGroupLabel(row['Serviço/Item'] ?? '');
+          final commissionPercent = _commissionPercentForCategory(category);
+          final valor = _parseMoney(row['Valor'] ?? '');
+          final comissao = valor * commissionPercent;
+          sheet.cell(
+            excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
+          ).value = _formatMoney(comissao);
+          continue;
+        }
         final value = _formatGridValue(column, row[column] ?? '');
         sheet.cell(
           excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
