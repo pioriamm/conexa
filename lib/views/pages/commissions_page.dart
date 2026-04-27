@@ -1134,20 +1134,25 @@ class _CommissionsPageState extends State<CommissionsPage> {
         : '${_formatDateForName(startDate)}_${_formatDateForName(endDate)}';
 
     final workbook = excel.Excel.createExcel();
-    final defaultSheet = workbook.getDefaultSheet();
     final safeSheetName = _sanitizeSheetName('$partner $periodLabel');
-    if (defaultSheet != null && defaultSheet != safeSheetName) {
-      workbook.rename(defaultSheet, safeSheetName);
-    }
+
     final sheet = workbook[safeSheetName];
+
+    final defaultSheet = workbook.getDefaultSheet();
+    if (defaultSheet != null && defaultSheet != safeSheetName) {
+      try {
+        workbook.delete(defaultSheet);
+      } catch (_) {
+        // Ignora se o pacote não permitir deletar a sheet padrão.
+      }
+    }
+    workbook.setDefaultSheet(safeSheetName);
 
     sheet.appendRow(visibleColumns.toList());
 
     for (final row in transactions) {
       sheet.appendRow(
-        visibleColumns
-            .map((column) => row.values[column] ?? '')
-            .toList(),
+        visibleColumns.map((column) => row.values[column] ?? '').toList(),
       );
     }
 
@@ -1162,19 +1167,22 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
     final fileName = '${_sanitizeFileName(partner)}_$periodLabel.xlsx';
     final blob = html.Blob(
-      [Uint8List.fromList(bytes)],
+      <dynamic>[Uint8List.fromList(bytes)],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     final url = html.Url.createObjectUrlFromBlob(blob);
+
     final anchor = html.AnchorElement(href: url)
       ..setAttribute('download', fileName)
       ..style.display = 'none';
-    html.document.body?.children.add(anchor);
+
+    html.document.body?.append(anchor);
     anchor.click();
     anchor.remove();
+
     Future<void>.delayed(
       const Duration(seconds: 1),
-      () => html.Url.revokeObjectUrl(url),
+          () => html.Url.revokeObjectUrl(url),
     );
   }
 
