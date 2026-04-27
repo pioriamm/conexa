@@ -1382,7 +1382,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       sheet.cell(
         excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0),
       ).value = columns[c];
-      sheet.setColWidth(c, 22);
+      sheet.setColumnWidth(c, 22);
     }
 
     for (var r = 0; r < transactions.length; r++) {
