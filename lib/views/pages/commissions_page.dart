@@ -1117,16 +1117,17 @@ class _CommissionsPageState extends State<CommissionsPage> {
         : '${_formatDateForName(startDate)}_${_formatDateForName(endDate)}';
 
     final workbook = excel.Excel.createExcel();
-    final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null) {
-      workbook.delete(defaultSheet);
-    }
-
     const reportSheetName = 'Comissionamento';
     const detailsSheetName = 'Detalhamento';
-    final reportSheet = workbook[reportSheetName];
+
+    final defaultSheet = workbook.getDefaultSheet();
+    if (defaultSheet != null && defaultSheet != detailsSheetName) {
+      workbook.rename(defaultSheet, detailsSheetName);
+    }
+
     final detailsSheet = workbook[detailsSheetName];
-    workbook.setDefaultSheet(reportSheetName);
+    final reportSheet = workbook[reportSheetName];
+    workbook.setDefaultSheet(detailsSheetName);
 
     _appendConsolidatedSheet(
       sheet: reportSheet,
