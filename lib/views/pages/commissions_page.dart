@@ -1172,7 +1172,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
     html.document.body?.children.add(anchor);
     anchor.click();
     anchor.remove();
-    html.Url.revokeObjectUrl(url);
+    Future<void>.delayed(
+      const Duration(seconds: 1),
+      () => html.Url.revokeObjectUrl(url),
+    );
   }
 
   DateTime? _tryParseDate(String raw) {
