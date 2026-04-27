@@ -1118,23 +1118,25 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
     final workbook = excel.Excel.createExcel();
     final defaultSheet = workbook.getDefaultSheet();
-    const reportSheetName = 'Comissionamento';
-    if (defaultSheet != null && defaultSheet != reportSheetName) {
-      try {
-        workbook.rename(defaultSheet, reportSheetName);
-      } catch (_) {
-        workbook.delete(defaultSheet);
-        workbook[reportSheetName];
-      }
+    if (defaultSheet != null) {
+      workbook.delete(defaultSheet);
     }
-    workbook.setDefaultSheet(reportSheetName);
+
+    const reportSheetName = 'Comissionamento';
+    const detailsSheetName = 'Detalhamento';
     final reportSheet = workbook[reportSheetName];
+    final detailsSheet = workbook[detailsSheetName];
+    workbook.setDefaultSheet(reportSheetName);
 
     _appendConsolidatedSheet(
       sheet: reportSheet,
       transactions: transactions,
       startDate: startDate,
       endDate: endDate,
+    );
+    _appendDetailsSheet(
+      sheet: detailsSheet,
+      transactions: transactions,
     );
 
     final bytes = workbook.encode();
@@ -1359,6 +1361,41 @@ class _CommissionsPageState extends State<CommissionsPage> {
     setCell(line, 4, _formatMoney(totalComissao), totalStyle);
   }
 
+  void _appendDetailsSheet({
+    required excel.Sheet sheet,
+    required List<AdminCobrancaRow> transactions,
+  }) {
+    const columns = <String>[
+      'Razão Social Cliente',
+      'Grupo',
+      'Parceiro',
+      'Vendedor',
+      'Serviço/Item',
+      'Custom Sistema',
+      'Valor',
+      'Valor Recebido',
+      'Vencimento',
+    ];
+
+    for (var c = 0; c < columns.length; c++) {
+      sheet.cell(
+        excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0),
+      ).value = columns[c];
+      sheet.setColWidth(c, 22);
+    }
+
+    for (var r = 0; r < transactions.length; r++) {
+      final row = transactions[r].values;
+      final line = r + 1;
+      for (var c = 0; c < columns.length; c++) {
+        final value = row[columns[c]] ?? '';
+        sheet.cell(
+          excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
+        ).value = value;
+      }
+    }
+  }
+
   String _serviceGroupLabel(String rawService) {
     final normalized = normalizeKey(rawService).replaceAll('º', 'o');
     if (normalized.contains('adesao')) return 'Adesão';
@@ -1368,7 +1405,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       return '1° Mensalidade';
     }
     if (normalized.contains('recorrencia') || normalized.contains('mensal')) {
-      return 'Recorrência';
+      return 'Mensal';
     }
     return rawService.trim().isEmpty ? 'Outros' : _capitalizeWords(rawService);
   }
