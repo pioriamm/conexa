@@ -1139,9 +1139,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
 
     final url = html.Url.createObjectUrlFromBlob(blob);
+    final fileName = _buildPartnerReportFileName(partner);
 
     final anchor = html.AnchorElement(href: url)
-      ..setAttribute('download', 'arquivo.xlsx')
+      ..setAttribute('download', fileName)
       ..style.display = 'none';
 
     html.document.body?.append(anchor);
@@ -1455,6 +1456,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
     return sanitized.isEmpty ? 'relatorio_parceiro' : sanitized;
+  }
+
+  String _buildPartnerReportFileName(String partner) {
+    final now = DateTime.now();
+    final year = now.year.toString();
+    final month = now.month.toString().padLeft(2, '0');
+    final safePartner = _sanitizeFileName(partner).toLowerCase();
+    return '${year}_${month}_$safePartner.xlsx';
   }
 }
 
