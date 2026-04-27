@@ -1402,12 +1402,29 @@ class _CommissionsPageState extends State<CommissionsPage> {
   double _parseMoney(String raw) {
     var value = raw.trim();
     if (value.isEmpty) return 0;
+
     value = value
         .replaceAll('R\$', '')
-        .replaceAll(' ', '')
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
-    return double.tryParse(value) ?? 0;
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp(r'[^0-9,.\-]'), '');
+    if (value.isEmpty) return 0;
+
+    final lastComma = value.lastIndexOf(',');
+    final lastDot = value.lastIndexOf('.');
+    final decimalSeparator = lastComma > lastDot
+        ? ','
+        : (lastDot > lastComma ? '.' : null);
+
+    String normalized;
+    if (decimalSeparator == ',') {
+      normalized = value.replaceAll('.', '').replaceAll(',', '.');
+    } else if (decimalSeparator == '.') {
+      normalized = value.replaceAll(',', '');
+    } else {
+      normalized = value;
+    }
+
+    return double.tryParse(normalized) ?? 0;
   }
 
   String _formatMoney(double value) {
