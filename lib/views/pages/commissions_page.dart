@@ -992,6 +992,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: ExpansionTile(
+              controlAffinity: ListTileControlAffinity.leading,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide.none,
@@ -1002,6 +1003,16 @@ class _CommissionsPageState extends State<CommissionsPage> {
               ),
               title: Text('$partner (${transactions.length})'),
               subtitle: const Text('Clique para expandir transações relacionadas'),
+              trailing: Tooltip(
+                message: 'Exportar relatório em Excel',
+                child: IconButton(
+                  icon: const Icon(Icons.download_outlined),
+                  onPressed: () => _exportPartnerReport(
+                    partner: partner,
+                    transactions: transactions,
+                  ),
+                ),
+              ),
               children: [
                 _buildCommissionsTable(transactions),
               ],
@@ -1085,6 +1096,127 @@ class _CommissionsPageState extends State<CommissionsPage> {
       buf.write(s[i]);
     }
     return buf.toString();
+  }
+
+  Future<void> _exportPartnerReport({
+    required String partner,
+    required List<AdminCobrancaRow> transactions,
+  }) async {
+    if (transactions.isEmpty) return;
+
+    const visibleColumns = [
+      'ID da Cobrança',
+      'ID Cliente',
+      'CPF/CNPJ',
+      'Razão Social Cliente',
+      'Grupo',
+      'Parceiro',
+      'Vendedor',
+      'Serviço/Item',
+      'Custom Sistema',
+      'Valor',
+      'Valor Recebido',
+      'Vencimento',
+      'Quitação',
+      'Status',
+    ];
+
+    final dueDates = transactions
+        .map((row) => _tryParseDate(row.values['Vencimento'] ?? ''))
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+
+    final startDate = dueDates.isEmpty ? null : dueDates.first;
+    final endDate = dueDates.isEmpty ? null : dueDates.last;
+    final periodLabel = startDate == null || endDate == null
+        ? 'sem_periodo'
+        : '${_formatDateForName(startDate)}_${_formatDateForName(endDate)}';
+
+    final workbook = excel.Excel.createExcel();
+    final defaultSheet = workbook.getDefaultSheet();
+    final safeSheetName = _sanitizeSheetName('$partner $periodLabel');
+    if (defaultSheet != null && defaultSheet != safeSheetName) {
+      workbook.rename(defaultSheet, safeSheetName);
+    }
+    final sheet = workbook[safeSheetName];
+
+    sheet.appendRow(visibleColumns.map(excel.TextCellValue.new).toList());
+
+    for (final row in transactions) {
+      sheet.appendRow(
+        visibleColumns
+            .map((column) => excel.TextCellValue(row.values[column] ?? ''))
+            .toList(),
+      );
+    }
+
+    final bytes = workbook.encode();
+    if (bytes == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível gerar o arquivo Excel.')),
+      );
+      return;
+    }
+
+    final fileName = '${_sanitizeFileName(partner)}_$periodLabel.xlsx';
+    final blob = html.Blob(
+      [Uint8List.fromList(bytes)],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute('download', fileName)
+      ..style.display = 'none';
+    html.document.body?.children.add(anchor);
+    anchor.click();
+    anchor.remove();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  DateTime? _tryParseDate(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+
+    final isoCandidate = value.split(' ').first;
+    final iso = DateTime.tryParse(isoCandidate);
+    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+
+    final br = RegExp(r'^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$')
+        .firstMatch(isoCandidate);
+    if (br == null) return null;
+
+    final day = int.tryParse(br.group(1) ?? '');
+    final month = int.tryParse(br.group(2) ?? '');
+    final yearRaw = int.tryParse(br.group(3) ?? '');
+    if (day == null || month == null || yearRaw == null) return null;
+    final year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    return DateTime(year, month, day);
+  }
+
+  String _formatDateForName(DateTime value) {
+    final d = value.day.toString().padLeft(2, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    final y = value.year.toString();
+    return '$d$m$y';
+  }
+
+  String _sanitizeSheetName(String value) {
+    final sanitized = value
+        .replaceAll(RegExp(r'[:\\/?*\[\]]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (sanitized.isEmpty) return 'Relatorio';
+    return sanitized.length > 31 ? sanitized.substring(0, 31) : sanitized;
+  }
+
+  String _sanitizeFileName(String value) {
+    final sanitized = value
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), ' ')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .trim();
+    return sanitized.isEmpty ? 'relatorio_parceiro' : sanitized;
   }
 }
 
