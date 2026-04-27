@@ -9,6 +9,22 @@ class CommissionsPage extends StatefulWidget {
 
 class _CommissionsPageState extends State<CommissionsPage> {
   static const int _pageSize = 20;
+  static const List<String> _gridColumns = [
+    'ID da Cobrança',
+    'ID Cliente',
+    'CPF/CNPJ',
+    'Razão Social Cliente',
+    'Grupo',
+    'Parceiro',
+    'Vendedor',
+    'Serviço/Item',
+    'Custom Sistema',
+    'Valor',
+    'Valor Recebido',
+    'Vencimento',
+    'Quitação',
+    'Status',
+  ];
   static const Set<String> _textColumns = {
     'Razão Social Cliente',
     'Grupo',
@@ -813,23 +829,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   Widget _buildCommissionsTable(List<AdminCobrancaRow> rows) {
-    const visibleColumns = [
-      'ID da Cobrança',
-      'ID Cliente',
-      'CPF/CNPJ',
-      'Razão Social Cliente',
-      'Grupo',
-      'Parceiro',
-      'Vendedor',
-      'Serviço/Item',
-      'Custom Sistema',
-      'Valor',
-      'Valor Recebido',
-      'Vencimento',
-      'Quitação',
-      'Status',
-    ];
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final tableWidth = constraints.maxWidth;
@@ -847,13 +846,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary,
                 ),
-                columns: visibleColumns
+                columns: _gridColumns
                     .map((c) => DataColumn(label: Text(c)))
                     .toList(),
                 rows: rows.map((row) {
                   return DataRow(
-                    cells: List.generate(visibleColumns.length, (index) {
-                      final column = visibleColumns[index];
+                    cells: List.generate(_gridColumns.length, (index) {
+                      final column = _gridColumns[index];
                       final value = _formatGridValue(
                         column,
                         row.values[column] ?? '',
@@ -1194,11 +1193,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final category = _serviceGroupLabel(row.values['Serviço/Item'] ?? '');
       final carteira = _parseMoney(row.values['Valor'] ?? '');
       final recebido = _parseMoney(row.values['Valor Recebido'] ?? '');
+      final status = row.values['Status'] ?? '';
+      final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0;
       final current =
           totalsByCategory[category] ?? const _ConsolidadoTotais.zero();
       totalsByCategory[category] = current.add(
         carteira: carteira,
         recebido: recebido,
+        carteiraQuitada: carteiraQuitada,
       );
     }
 
@@ -1324,8 +1326,9 @@ class _CommissionsPageState extends State<CommissionsPage> {
     for (final entry in sortedEntries) {
       final carteira = entry.value.carteira;
       final recebido = entry.value.recebido;
+      final carteiraQuitada = entry.value.carteiraQuitada;
       final commissionPercent = _commissionPercentForCategory(entry.key);
-      final comissao = recebido * commissionPercent;
+      final comissao = carteiraQuitada * commissionPercent;
       totalCarteira += carteira;
       totalRecebido += recebido;
       totalComissao += comissao;
@@ -1351,35 +1354,29 @@ class _CommissionsPageState extends State<CommissionsPage> {
     required excel.Sheet sheet,
     required List<AdminCobrancaRow> transactions,
   }) {
-    const columns = <String>[
-      'Razão Social Cliente',
-      'Grupo',
-      'Parceiro',
-      'Vendedor',
-      'Serviço/Item',
-      'Custom Sistema',
-      'Valor',
-      'Valor Recebido',
-      'Vencimento',
-    ];
-
-    for (var c = 0; c < columns.length; c++) {
+    for (var c = 0; c < _gridColumns.length; c++) {
       sheet.cell(
         excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0),
-      ).value = columns[c];
+      ).value = _gridColumns[c];
       sheet.setColumnWidth(c, 22);
     }
 
     for (var r = 0; r < transactions.length; r++) {
       final row = transactions[r].values;
       final line = r + 1;
-      for (var c = 0; c < columns.length; c++) {
-        final value = row[columns[c]] ?? '';
+      for (var c = 0; c < _gridColumns.length; c++) {
+        final column = _gridColumns[c];
+        final value = _formatGridValue(column, row[column] ?? '');
         sheet.cell(
           excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
         ).value = value;
       }
     }
+  }
+
+  bool _isStatusQuitado(String status) {
+    final normalized = normalizeKey(status);
+    return normalized.contains('quitad');
   }
 
   String _serviceGroupLabel(String rawService) {
@@ -1471,22 +1468,27 @@ class _ConsolidadoTotais {
   const _ConsolidadoTotais({
     required this.carteira,
     required this.recebido,
+    required this.carteiraQuitada,
   });
 
   const _ConsolidadoTotais.zero()
       : carteira = 0,
-        recebido = 0;
+        recebido = 0,
+        carteiraQuitada = 0;
 
   final double carteira;
   final double recebido;
+  final double carteiraQuitada;
 
   _ConsolidadoTotais add({
     required double carteira,
     required double recebido,
+    required double carteiraQuitada,
   }) {
     return _ConsolidadoTotais(
       carteira: this.carteira + carteira,
       recebido: this.recebido + recebido,
+      carteiraQuitada: this.carteiraQuitada + carteiraQuitada,
     );
   }
 }
