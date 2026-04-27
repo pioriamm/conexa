@@ -1006,7 +1006,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
               trailing: Tooltip(
                 message: 'Exportar relatório em Excel',
                 child: IconButton(
-                  icon: const Icon(Icons.download_outlined),
+                  icon: const Icon(Icons.download_outlined, color: Color(0xFF87b526),),
                   onPressed: () => _exportPartnerReport(
                     partner: partner,
                     transactions: transactions,
