@@ -1141,12 +1141,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
     }
     final sheet = workbook[safeSheetName];
 
-    sheet.appendRow(visibleColumns.map(excel.TextCellValue.new).toList());
+    sheet.appendRow(visibleColumns.toList());
 
     for (final row in transactions) {
       sheet.appendRow(
         visibleColumns
-            .map((column) => excel.TextCellValue(row.values[column] ?? ''))
+            .map((column) => row.values[column] ?? '')
             .toList(),
       );
     }
