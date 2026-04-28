@@ -842,10 +842,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
                   return DataRow(
                     cells: List.generate(_gridColumns.length, (index) {
                       final column = _gridColumns[index];
-                      final value = _formatGridValue(
-                        column,
-                        row.values[column] ?? '',
-                      );
+                      final value = column == '% Comissão'
+                          ? _formatPercentFromRatio(
+                              _commissionPercentFor(
+                                rawPercent: row.values['% Comissão'] ?? '',
+                                cnpj: row.values['CPF/CNPJ'] ?? '',
+                                rawService: row.values['Serviço/Item'] ?? '',
+                              ),
+                            )
+                          : _formatGridValue(
+                              column,
+                              row.values[column] ?? '',
+                            );
                       final minWidth = math.max<double>(
                         120,
                         (value.length * 9).toDouble(),
@@ -1075,7 +1083,15 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final normalized = trimmed.replaceAll('%', '').replaceAll(',', '.').trim();
     final value = double.tryParse(normalized);
     if (value == null) return trimmed;
+    if (value > 0 && value <= 1) {
+      return _formatPercentFromRatio(value);
+    }
     return '${value.toStringAsFixed(0)}%';
+  }
+
+  String _formatPercentFromRatio(double ratio) {
+    if (ratio <= 0) return 'N/A';
+    return '${(ratio * 100).toStringAsFixed(0)}%';
   }
 
   String _capitalizeWords(String value) {
