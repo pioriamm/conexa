@@ -1,3 +1,4 @@
+
 const List<Map<String, String>> kPartnerCommissionRates = [
   {
     'cnpj': '43.596.411/0001-02',
@@ -182,3 +183,4 @@ const List<Map<String, String>> kPartnerCommissionRates = [
     'mensalidade': '20%',
   },
 ];
+

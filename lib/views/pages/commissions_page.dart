@@ -19,6 +19,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     'Vendedor',
     'Serviço/Item',
     'Custom Sistema',
+    '% Comissão',
     'Valor',
     'Valor Recebido',
     'Vencimento',
@@ -130,6 +131,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
             'vendedor': value.vendedor,
             'parceiro': value.parceiro,
             'customSistema': value.customSistema,
+            'percentualComissao': value.percentualComissao,
           };
 
           final existing = byId[id];
@@ -260,6 +262,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         row.vendedor = detalhes?['vendedor'] ?? '';
         row.parceiro = detalhes?['parceiro'] ?? '';
         row.customSistema = detalhes?['customSistema'] ?? '';
+        row.percentualComissao = detalhes?['percentualComissao'] ?? '';
 
         if (!mounted) return;
         setState(() {
@@ -839,10 +842,18 @@ class _CommissionsPageState extends State<CommissionsPage> {
                   return DataRow(
                     cells: List.generate(_gridColumns.length, (index) {
                       final column = _gridColumns[index];
-                      final value = _formatGridValue(
-                        column,
-                        row.values[column] ?? '',
-                      );
+                      final value = column == '% Comissão'
+                          ? _formatPercentFromRatio(
+                              _commissionPercentFor(
+                                rawPercent: row.values['% Comissão'] ?? '',
+                                cnpj: row.values['CPF/CNPJ'] ?? '',
+                                rawService: row.values['Serviço/Item'] ?? '',
+                              ),
+                            )
+                          : _formatGridValue(
+                              column,
+                              row.values[column] ?? '',
+                            );
                       final minWidth = math.max<double>(
                         120,
                         (value.length * 9).toDouble(),
@@ -1046,6 +1057,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
       return 'R\$ 0,00';
     }
 
+    if (column == '% Comissão') {
+      return _formatPercentValue(value);
+    }
+
     if (!moneyColumns.contains(column)) {
       if (_textColumns.contains(column)) {
         return _displayValue(_capitalizeWords(value));
@@ -1060,6 +1075,23 @@ class _CommissionsPageState extends State<CommissionsPage> {
       return 'N/A';
     }
     return value.trim();
+  }
+
+  String _formatPercentValue(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || normalizeKey(trimmed) == 'null') return 'N/A';
+    final normalized = trimmed.replaceAll('%', '').replaceAll(',', '.').trim();
+    final value = double.tryParse(normalized);
+    if (value == null) return trimmed;
+    if (value > 0 && value <= 1) {
+      return _formatPercentFromRatio(value);
+    }
+    return '${value.toStringAsFixed(0)}%';
+  }
+
+  String _formatPercentFromRatio(double ratio) {
+    if (ratio <= 0) return 'N/A';
+    return '${(ratio * 100).toStringAsFixed(0)}%';
   }
 
   String _capitalizeWords(String value) {
@@ -1158,6 +1190,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final status = row.values['Status'] ?? '';
       final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0.0;
       final commissionPercent = _commissionPercentFor(
+        rawPercent: row.values['% Comissão'] ?? '',
         cnpj: row.values['CPF/CNPJ'] ?? '',
         rawService: serviceItem,
       );
@@ -1344,6 +1377,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final column = detailsColumns[c];
         if (column == '% Comissão') {
           final commissionPercent = _commissionPercentFor(
+            rawPercent: row['% Comissão'] ?? '',
             cnpj: row['CPF/CNPJ'] ?? '',
             rawService: row['Serviço/Item'] ?? '',
           );
@@ -1354,6 +1388,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         }
         if (column == 'Comissão') {
           final commissionPercent = _commissionPercentFor(
+            rawPercent: row['% Comissão'] ?? '',
             cnpj: row['CPF/CNPJ'] ?? '',
             rawService: row['Serviço/Item'] ?? '',
           );
@@ -1392,9 +1427,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   double _commissionPercentFor({
+    required String rawPercent,
     required String cnpj,
     required String rawService,
   }) {
+    final tenexPercent = _parsePercent(rawPercent, defaultPercent: 0.0);
+    if (tenexPercent > 0) return tenexPercent;
     final normalizedCnpj = digitsOnly(cnpj);
     final rates = _commissionRatesByCnpj[normalizedCnpj];
     if (rates == null) return 0.2;
@@ -1426,13 +1464,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return rates;
   }
 
-  double _parsePercent(String? input) {
+  double _parsePercent(String? input, {double defaultPercent = 20.0}) {
     final normalized = (input ?? '')
         .replaceAll('%', '')
         .replaceAll(',', '.')
         .trim();
     final value = double.tryParse(normalized);
-    return ((value ?? 20.0) / 100).clamp(0.0, 1.0);
+    return ((value ?? defaultPercent) / 100).clamp(0.0, 1.0);
   }
 
   double _parseMoney(String raw) {
