@@ -744,30 +744,6 @@ class _ProcessingPageState extends State<ProcessingPage>
             height: 1.5,
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Switch(
-              value: _autoOpenTicketOnDueToday,
-              onChanged: (value) {
-                setState(() {
-                  _autoOpenTicketOnDueToday = value;
-                });
-              },
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'Abrir ticket automaticamente (Vence hoje)',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -828,6 +804,30 @@ class _ProcessingPageState extends State<ProcessingPage>
             total: _conexaRows?.length ?? 0,
             buttonLabel: _resultRows.isEmpty ? 'Processar' : 'Processar novamente',
             primary: true,
+            extraContent: Row(
+              children: [
+                Switch(
+                  value: _autoOpenTicketOnDueToday,
+                  onChanged: (value) {
+                    setState(() {
+                      _autoOpenTicketOnDueToday = value;
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Abrir ticket automaticamente (Vence hoje)',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             onPressed: (_loading ||
                     _loadingLocaliza ||
                     _loadingConexa ||
@@ -878,6 +878,7 @@ class _ProcessingPageState extends State<ProcessingPage>
     required int total,
     required String buttonLabel,
     required VoidCallback? onPressed,
+    Widget? extraContent,
     String? disabledHint,
     bool primary = false,
   }) {
@@ -960,6 +961,10 @@ class _ProcessingPageState extends State<ProcessingPage>
             disabledHint: disabledHint,
             enabled: onPressed != null,
           ),
+          if (extraContent != null) ...[
+            const SizedBox(height: 12),
+            extraContent,
+          ],
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -1928,4 +1933,3 @@ class _ProcessingPageState extends State<ProcessingPage>
     return buf.toString();
   }
 }
-
