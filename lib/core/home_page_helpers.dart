@@ -457,6 +457,16 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
     'Sistemas',
     'Nome Sistema',
   ]);
+  final percentualComissaoCol = _findColumn(header, [
+    '% comissão',
+    '% comissao',
+    'percentual comissão',
+    'percentual comissao',
+    'percentual',
+    'porcentagem',
+    'comissão',
+    'comissao',
+  ]);
 
   if (idCol == null ||
       grupoCol == null ||
@@ -475,7 +485,7 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
   print('=== PARSE TENEX ===');
   print('Header normalizado:');
   header.forEach((k, v) => print('  "$k" -> $v'));
-  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol');
+  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol percentualComissaoCol=$percentualComissaoCol');
 
   for (var i = 1; i < table.rows.length; i++) {
     final row = table.rows[i];
@@ -502,6 +512,9 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesBytes(
       vendedor: _cellValue(row, vendedorCol).trim(),
       parceiro: _cellValue(row, parceiroCol).trim(),
       customSistema: _cellValue(row, customSistemaCol).trim(),
+      percentualComissao: percentualComissaoCol == null
+          ? ''
+          : _cellValue(row, percentualComissaoCol).trim(),
     );
 
     // Gera todas as variantes de chave para o mesmo cliente.
@@ -530,6 +543,7 @@ int _scoreLinhaTenex(LinhaDetalhaTenex l) {
   if (l.vendedor.isNotEmpty) score++;
   if (l.parceiro.isNotEmpty) score++;
   if (l.customSistema.isNotEmpty) score++;
+  if (l.percentualComissao.isNotEmpty) score++;
   return score;
 }
 
@@ -902,6 +916,16 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
     'sistemas',
     'nome sistema',
   ]);
+  final percentualComissaoCol = _csvFindColumn(header, [
+    '% comissão',
+    '% comissao',
+    'percentual comissão',
+    'percentual comissao',
+    'percentual',
+    'porcentagem',
+    'comissão',
+    'comissao',
+  ]);
 
   if (idCol == null ||
       grupoCol == null ||
@@ -917,7 +941,7 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
   print('Separador: "$sep"');
   print('Header normalizado:');
   header.forEach((k, v) => print('  "$k" -> $v'));
-  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol');
+  print('idCol=$idCol grupoCol=$grupoCol vendedorCol=$vendedorCol parceiroCol=$parceiroCol customSistemaCol=$customSistemaCol percentualComissaoCol=$percentualComissaoCol');
 
   for (var i = 1; i < lines.length; i++) {
     if (lines[i].trim().isEmpty) continue;
@@ -950,7 +974,9 @@ Future<Map<String, LinhaDetalhaTenex>> parseClientesDetalhesCsvBytes(
       vendedor: _csvField(row, vendedorCol),
       parceiro: _csvField(row, parceiroCol),
       customSistema: _csvField(row, customSistemaCol),
-
+      percentualComissao: percentualComissaoCol == null
+          ? ''
+          : _csvField(row, percentualComissaoCol),
     );
     for (final key in clientIdLookupKeys(idRaw)) {
       mapped[key] = detalhes;

@@ -5,6 +5,7 @@ class LinhaDetalhaTenex {
     required this.vendedor,
     required this.parceiro,
     required this.customSistema,
+    required this.percentualComissao,
   });
 
   final String id;
@@ -12,4 +13,5 @@ class LinhaDetalhaTenex {
   final String vendedor;
   final String parceiro;
   final String customSistema;
+  final String percentualComissao;
 }
