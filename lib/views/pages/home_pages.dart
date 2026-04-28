@@ -384,6 +384,7 @@ class AdminCobrancaRow {
   set issRetido(String value) => values['ISS Retido'] = value;
   set quantidadeCnpj(String value) => values['Quantidade CNPJ'] = value;
   set customSistema(String value) => values['Custom Sistema'] = value;
+  set percentualComissao(String value) => values['% Comissão'] = value;
 
   static const List<String> columns = [
     'ID da Cobrança',
@@ -430,6 +431,7 @@ class AdminCobrancaRow {
     'ISS Retido',
     'Quantidade CNPJ',
     'Custom Sistema',
+    '% Comissão',
   ];
 
   List<String> toValues() => columns.map((c) => values[c] ?? '').toList();
