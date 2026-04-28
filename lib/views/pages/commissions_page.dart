@@ -37,12 +37,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
   String? _adminVendaName;
   String? _adminCobrancaName;
   String? _clientesDetalhesName;
-  Uint8List? _adminVendaBytes;
   Uint8List? _adminCobrancaBytes;
-  Uint8List? _clientesDetalhesBytes;
-  bool _adminVendaIsCsv = false;
   bool _adminCobrancaIsCsv = false;
-  bool _clientesDetalhesIsCsv = false;
   bool _loading = false;
   String _status = '';
   bool _hasError = false;
@@ -81,8 +77,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
         }
         setState(() {
           _adminVendaName = name;
-          _adminVendaBytes = bytes;
-          _adminVendaIsCsv = isCsv;
           _adminVendaCount = parsed.length;
           if (previewRows != null) {
             _gridRows = previewRows;
@@ -118,9 +112,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
   Future<void> _pickClientesDetalhes() async {
     await _pickAndStore(
       onPicked: (name, bytes, isCsv) async {
-        print('=== PICK ===');
-        print('name=$name, isCsv=$isCsv');
-        print('primeiros bytes: ${bytes.take(4).toList()}');
         final parsed = isCsv
             ? await parseClientesDetalhesCsvBytes(bytes)
             : await parseClientesDetalhesBytes(bytes);
@@ -150,8 +141,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
         setState(() {
           _clientesDetalhesName = name;
-          _clientesDetalhesBytes = bytes;
-          _clientesDetalhesIsCsv = isCsv;
           _clientesDetalhesCount = tenexJson.length;
           _tenexJsonList = tenexJson;
           _status = 'Base Tenex carregada (${tenexJson.length} IDs).';
@@ -240,17 +229,12 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final tenexById = <String, Map<String, String>>{};
       // 1. Quantas versões do 11567 existem na lista bruta?
       final versoes = _tenexJsonList.where((i) => i['id'] == '11567').toList();
-      print('Total de versões do 11567: ${versoes.length}');
       for (var i = 0; i < versoes.length; i++) {
-        print('Versão $i: ${versoes[i]}');
       }
 
-// 2. O que está no map final na chave '11567'?
-      print('No map: ${tenexById['11567']}');
 
-// 3. Existem outras chaves no map que contenham 11567?
-      final chavesRelacionadas = tenexById.keys.where((k) => k.contains('11567')).toList();
-      print('Chaves com 11567: $chavesRelacionadas');
+
+
       for (final item in _tenexJsonList) {
         final id = (item['id'] ?? '').toString();
         for (final key in clientIdLookupKeys(id)) {
@@ -1128,7 +1112,6 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final bytes = workbook.encode();
 
     if (bytes == null || bytes.isEmpty) {
-      print('Erro: Excel vazio');
       return;
     }
 
@@ -1154,32 +1137,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
-  DateTime? _tryParseDate(String raw) {
-    final value = raw.trim();
-    if (value.isEmpty) return null;
 
-    final isoCandidate = value.split(' ').first;
-    final iso = DateTime.tryParse(isoCandidate);
-    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
 
-    final br = RegExp(r'^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$')
-        .firstMatch(isoCandidate);
-    if (br == null) return null;
-
-    final day = int.tryParse(br.group(1) ?? '');
-    final month = int.tryParse(br.group(2) ?? '');
-    final yearRaw = int.tryParse(br.group(3) ?? '');
-    if (day == null || month == null || yearRaw == null) return null;
-    final year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
-    return DateTime(year, month, day);
-  }
-
-  String _formatDateForName(DateTime value) {
-    final d = value.day.toString().padLeft(2, '0');
-    final m = value.month.toString().padLeft(2, '0');
-    final y = value.year.toString();
-    return '$d$m$y';
-  }
 
   void _appendConsolidatedSheet({
     required excel.Sheet sheet,
