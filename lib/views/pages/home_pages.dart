@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_colors.dart';
+import '../../core/partner_commission_rates.dart';
 import '../../models/linha_detalhe_tenex.dart';
 import '../../models/movidesk_models.dart';
 import '../../models/step_status.dart';
@@ -433,4 +434,3 @@ class AdminCobrancaRow {
 
   List<String> toValues() => columns.map((c) => values[c] ?? '').toList();
 }
-
