@@ -54,7 +54,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   bool _groupByPartner = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final Map<String, Map<String, double>> _commissionRatesByCnpj =
+  late final Map<String, Map<String, double>> _commissionRatesByCnpj =
       _buildCommissionRatesByCnpj();
 
   @override
