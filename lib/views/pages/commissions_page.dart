@@ -54,6 +54,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
   bool _groupByPartner = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final Map<String, Map<String, double>> _commissionRatesByCnpj =
+      _buildCommissionRatesByCnpj();
 
   @override
   void dispose() {
@@ -1149,17 +1151,24 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final totalsByCategory = <String, _ConsolidadoTotais>{};
 
     for (final row in transactions) {
-      final category = _serviceGroupLabel(row.values['Serviço/Item'] ?? '');
+      final serviceItem = row.values['Serviço/Item'] ?? '';
+      final category = _serviceGroupLabel(serviceItem);
       final carteira = _parseMoney(row.values['Valor'] ?? '');
       final recebido = _parseMoney(row.values['Valor Recebido'] ?? '');
       final status = row.values['Status'] ?? '';
       final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0.0;
+      final commissionPercent = _commissionPercentFor(
+        cnpj: row.values['CPF/CNPJ'] ?? '',
+        rawService: serviceItem,
+      );
+      final comissao = carteiraQuitada * commissionPercent;
       final current =
           totalsByCategory[category] ?? const _ConsolidadoTotais.zero();
       totalsByCategory[category] = current.add(
         carteira: carteira,
         recebido: recebido,
         carteiraQuitada: carteiraQuitada,
+        comissao: comissao,
       );
     }
 
@@ -1286,8 +1295,10 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final carteira = entry.value.carteira;
       final recebido = entry.value.recebido;
       final carteiraQuitada = entry.value.carteiraQuitada;
-      final commissionPercent = _commissionPercentForCategory(entry.key);
-      final comissao = carteiraQuitada * commissionPercent;
+      final comissao = entry.value.comissao;
+      final commissionPercent = carteiraQuitada > 0
+          ? (comissao / carteiraQuitada)
+          : 0.0;
       totalCarteira += carteira;
       totalRecebido += recebido;
       totalComissao += comissao;
@@ -1332,16 +1343,20 @@ class _CommissionsPageState extends State<CommissionsPage> {
       for (var c = 0; c < detailsColumns.length; c++) {
         final column = detailsColumns[c];
         if (column == '% Comissão') {
-          final category = _serviceGroupLabel(row['Serviço/Item'] ?? '');
-          final commissionPercent = _commissionPercentForCategory(category);
+          final commissionPercent = _commissionPercentFor(
+            cnpj: row['CPF/CNPJ'] ?? '',
+            rawService: row['Serviço/Item'] ?? '',
+          );
           sheet.cell(
             excel.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: line),
           ).value = '${(commissionPercent * 100).toStringAsFixed(0)}%';
           continue;
         }
         if (column == 'Comissão') {
-          final category = _serviceGroupLabel(row['Serviço/Item'] ?? '');
-          final commissionPercent = _commissionPercentForCategory(category);
+          final commissionPercent = _commissionPercentFor(
+            cnpj: row['CPF/CNPJ'] ?? '',
+            rawService: row['Serviço/Item'] ?? '',
+          );
           final valor = _parseMoney(row['Valor'] ?? '');
           final comissao = valor * commissionPercent;
           sheet.cell(
@@ -1376,8 +1391,48 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return rawService.trim().isEmpty ? 'Outros' : _capitalizeWords(rawService);
   }
 
-  double _commissionPercentForCategory(String category) {
-    return 0.2;
+  double _commissionPercentFor({
+    required String cnpj,
+    required String rawService,
+  }) {
+    final normalizedCnpj = digitsOnly(cnpj);
+    final rates = _commissionRatesByCnpj[normalizedCnpj];
+    if (rates == null) return 0.2;
+    return rates[_commissionTypeForService(rawService)] ?? 0.2;
+  }
+
+  String _commissionTypeForService(String rawService) {
+    final normalized = normalizeKey(rawService).replaceAll('º', 'o');
+    if (normalized.contains('adesao')) return 'adesao';
+    if (normalized.contains('1o') ||
+        normalized.contains('primeira') ||
+        normalized.contains('1 recorrencia')) {
+      return 'primeira_mensalidade';
+    }
+    return 'mensalidade';
+  }
+
+  Map<String, Map<String, double>> _buildCommissionRatesByCnpj() {
+    final rates = <String, Map<String, double>>{};
+    for (final row in kPartnerCommissionRates) {
+      final cnpj = digitsOnly(row['cnpj'] ?? '');
+      if (cnpj.isEmpty) continue;
+      rates[cnpj] = {
+        'adesao': _parsePercent(row['adesao']),
+        'primeira_mensalidade': _parsePercent(row['primeira_mensalidade']),
+        'mensalidade': _parsePercent(row['mensalidade']),
+      };
+    }
+    return rates;
+  }
+
+  double _parsePercent(String? input) {
+    final normalized = (input ?? '')
+        .replaceAll('%', '')
+        .replaceAll(',', '.')
+        .trim();
+    final value = double.tryParse(normalized);
+    return ((value ?? 20.0) / 100).clamp(0.0, 1.0);
   }
 
   double _parseMoney(String raw) {
@@ -1452,26 +1507,31 @@ class _ConsolidadoTotais {
     required this.carteira,
     required this.recebido,
     required this.carteiraQuitada,
+    required this.comissao,
   });
 
   const _ConsolidadoTotais.zero()
       : carteira = 0,
         recebido = 0,
-        carteiraQuitada = 0;
+        carteiraQuitada = 0,
+        comissao = 0;
 
   final double carteira;
   final double recebido;
   final double carteiraQuitada;
+  final double comissao;
 
   _ConsolidadoTotais add({
     required double carteira,
     required double recebido,
     required double carteiraQuitada,
+    required double comissao,
   }) {
     return _ConsolidadoTotais(
       carteira: this.carteira + carteira,
       recebido: this.recebido + recebido,
       carteiraQuitada: this.carteiraQuitada + carteiraQuitada,
+      comissao: this.comissao + comissao,
     );
   }
 }
