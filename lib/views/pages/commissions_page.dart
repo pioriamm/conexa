@@ -62,8 +62,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
   _GroupingMode _groupingMode = _GroupingMode.none;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  late final Map<String, Map<String, double>> _commissionRatesByCnpj =
-      _buildCommissionRatesByCnpj();
+  late final List<Map<String, String>> _commissionRatesByPartnerName =
+      _buildCommissionRatesByPartnerName();
 
   @override
   void dispose() {
@@ -494,17 +494,17 @@ class _CommissionsPageState extends State<CommissionsPage> {
                             ),
                             const SizedBox(width: 12),
                             _buildGroupingChip(
-                              label: 'Agrupar Parceiro',
+                              label: 'AGRUPAR PARCEIRO',
                               mode: _GroupingMode.partner,
                             ),
                             const SizedBox(width: 8),
                             _buildGroupingChip(
-                              label: 'Agrupar Vendedor',
+                              label: 'AGRUPAR VENDEDOR',
                               mode: _GroupingMode.seller,
                             ),
                             const SizedBox(width: 8),
                             _buildGroupingChip(
-                              label: 'Agrupar Custom Sistema',
+                              label: 'AGRUPAR SISTEMA',
                               mode: _GroupingMode.customSystem,
                             ),
                           ],
@@ -846,11 +846,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                       final column = _gridColumns[index];
                       final value = column == '% Comissão'
                           ? _formatPercentFromRatio(
-                              _commissionPercentFor(
-                                rawPercent: row.values['% Comissão'] ?? '',
-                                cnpj: row.values['CPF/CNPJ'] ?? '',
-                                rawService: row.values['Serviço/Item'] ?? '',
-                              ),
+                              _commissionPercentForRow(row),
                             )
                           : _formatGridValue(
                               column,
@@ -955,7 +951,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
       child: Text(
-        '${_formatInt(totalCount)} transações filtradas e agrupadas por ${_groupingLabel.toLowerCase()}',
+        '${_formatInt(totalCount)} transações filtradas e agrupadas por $_groupingLabel',
         style: const TextStyle(
           fontFamily: 'Inter',
           fontSize: 12,
@@ -992,11 +988,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
   String get _groupingLabel {
     switch (_groupingMode) {
       case _GroupingMode.partner:
-        return 'Parceiro';
+        return 'PARCEIRO';
       case _GroupingMode.seller:
-        return 'Vendedor';
+        return 'VENDEDOR';
       case _GroupingMode.customSystem:
-        return 'Custom Sistema';
+        return 'SISTEMA';
       case _GroupingMode.none:
         return 'Nenhum';
     }
@@ -1020,7 +1016,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     final grouped = <String, List<AdminCobrancaRow>>{};
     for (final row in rows) {
       final groupValue = _displayValue(row.values[groupingColumn] ?? '');
-      grouped.putIfAbsent(groupValue, () => []).add(row);
+      grouped.putIfAbsent(_normalizeGroupingName(groupValue), () => []).add(row);
     }
     final sortedKeys = grouped.keys.toList()
       ..sort((a, b) {
@@ -1145,8 +1141,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
   }
 
   String _formatPercentFromRatio(double ratio) {
-    if (ratio <= 0) return 'N/A';
+    if (ratio <= 0) return '0%';
     return '${(ratio * 100).toStringAsFixed(0)}%';
+  }
+
+  String _normalizeGroupingName(String value) {
+    final normalized = _displayValue(value);
+    return normalized == 'N/A' ? normalized : normalized.toUpperCase();
   }
 
   String _capitalizeWords(String value) {
@@ -1245,8 +1246,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final status = row.values['Status'] ?? '';
       final carteiraQuitada = _isStatusQuitado(status) ? carteira : 0.0;
       final commissionPercent = _commissionPercentFor(
-        rawPercent: row.values['% Comissão'] ?? '',
-        cnpj: row.values['CPF/CNPJ'] ?? '',
+        row: row.values,
         rawService: serviceItem,
       );
       final comissao = carteiraQuitada * commissionPercent;
@@ -1432,8 +1432,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         final column = detailsColumns[c];
         if (column == '% Comissão') {
           final commissionPercent = _commissionPercentFor(
-            rawPercent: row['% Comissão'] ?? '',
-            cnpj: row['CPF/CNPJ'] ?? '',
+            row: row,
             rawService: row['Serviço/Item'] ?? '',
           );
           sheet.cell(
@@ -1443,8 +1442,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
         }
         if (column == 'Comissão') {
           final commissionPercent = _commissionPercentFor(
-            rawPercent: row['% Comissão'] ?? '',
-            cnpj: row['CPF/CNPJ'] ?? '',
+            row: row,
             rawService: row['Serviço/Item'] ?? '',
           );
           final valor = _parseMoney(row['Valor'] ?? '');
@@ -1481,17 +1479,63 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return rawService.trim().isEmpty ? 'Outros' : _capitalizeWords(rawService);
   }
 
+  double _commissionPercentForRow(AdminCobrancaRow row) {
+    return _commissionPercentFor(
+      row: row.values,
+      rawService: row.values['Serviço/Item'] ?? '',
+    );
+  }
+
   double _commissionPercentFor({
-    required String rawPercent,
-    required String cnpj,
+    required Map<String, String> row,
     required String rawService,
   }) {
-    final tenexPercent = _parsePercent(rawPercent, defaultPercent: 0.0);
+    final serviceType = _commissionTypeForService(rawService);
+    final groupedRate = _groupedCommissionRate(
+      row: row,
+      serviceType: serviceType,
+    );
+    if (groupedRate != null) return groupedRate;
+
+    final tenexPercent = _parsePercent(
+      row['% Comissão'],
+      defaultPercent: 0.0,
+    );
     if (tenexPercent > 0) return tenexPercent;
-    final normalizedCnpj = digitsOnly(cnpj);
-    final rates = _commissionRatesByCnpj[normalizedCnpj];
-    if (rates == null) return 0.2;
-    return rates[_commissionTypeForService(rawService)] ?? 0.2;
+    return 0.0;
+  }
+
+  double? _groupedCommissionRate({
+    required Map<String, String> row,
+    required String serviceType,
+  }) {
+    if (!_isGroupingEnabled) return null;
+
+    final groupValue = _groupingSearchValue(row).trim();
+    if (groupValue.isEmpty) return 0.0;
+    final query = normalizeKey(groupValue);
+    if (query.isEmpty) return 0.0;
+
+    for (final rateRow in _commissionRatesByPartnerName) {
+      final razaoSocial = normalizeKey(rateRow['razao_social'] ?? '');
+      if (razaoSocial.isEmpty) continue;
+      if (!razaoSocial.contains(query)) continue;
+      return _parsePercent(rateRow[serviceType], defaultPercent: 0.0);
+    }
+    return 0.0;
+  }
+
+  String _groupingSearchValue(Map<String, String> row) {
+    switch (_groupingMode) {
+      case _GroupingMode.partner:
+        return row['Parceiro'] ?? '';
+      case _GroupingMode.seller:
+        return row['Vendedor'] ?? '';
+      case _GroupingMode.customSystem:
+        return row['Custom Sistema'] ?? '';
+      case _GroupingMode.none:
+        return '';
+    }
   }
 
   String _commissionTypeForService(String rawService) {
@@ -1505,18 +1549,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return 'mensalidade';
   }
 
-  Map<String, Map<String, double>> _buildCommissionRatesByCnpj() {
-    final rates = <String, Map<String, double>>{};
-    for (final row in kPartnerCommissionRates) {
-      final cnpj = digitsOnly(row['cnpj'] ?? '');
-      if (cnpj.isEmpty) continue;
-      rates[cnpj] = {
-        'adesao': _parsePercent(row['adesao']),
-        'primeira_mensalidade': _parsePercent(row['primeira_mensalidade']),
-        'mensalidade': _parsePercent(row['mensalidade']),
-      };
-    }
-    return rates;
+  List<Map<String, String>> _buildCommissionRatesByPartnerName() {
+    return List<Map<String, String>>.from(kPartnerCommissionRates);
   }
 
   double _parsePercent(String? input, {double defaultPercent = 20.0}) {
