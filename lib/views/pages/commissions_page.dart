@@ -1531,6 +1531,13 @@ class _CommissionsPageState extends State<CommissionsPage> {
     required Map<String, String> row,
     required String rawService,
   }) {
+    final normalizedService = normalizeKey(rawService);
+    if (normalizedService.isEmpty ||
+        normalizedService == 'n a' ||
+        normalizedService == 'na') {
+      return 0.0;
+    }
+
     final serviceType = _commissionTypeForService(rawService);
     final groupedRate = _groupedCommissionRate(
       row: row,
