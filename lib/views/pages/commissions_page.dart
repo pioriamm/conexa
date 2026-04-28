@@ -15,7 +15,7 @@ enum _GroupingMode {
 }
 
 class _CommissionsPageState extends State<CommissionsPage> {
-  static const int _pageSize = 20;
+  static const List<int> _pageSizeOptions = [10, 20, 30];
   static const List<String> _gridColumns = [
     'ID da Cobrança',
     'ID Cliente',
@@ -59,6 +59,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   int _tenexProcessed = 0;
   int _tenexTotal = 0;
   int _currentPage = 0;
+  int _pageSize = 10;
   _GroupingMode _groupingMode = _GroupingMode.none;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -887,13 +888,53 @@ class _CommissionsPageState extends State<CommissionsPage> {
       padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
       child: Row(
         children: [
-          Text(
-            'Mostrando ${startIdx + 1}–$endIdx de ${_formatInt(totalCount)}',
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+          Row(
+            children: [
+              Text(
+                'Itens por página',
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _pageSize,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12,
+                    color: AppColors.textPrimary,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  onChanged: (value) {
+                    if (value == null || value == _pageSize) return;
+                    setState(() {
+                      _pageSize = value;
+                      _currentPage = 0;
+                    });
+                  },
+                  items: _pageSizeOptions
+                      .map(
+                        (option) => DropdownMenuItem<int>(
+                          value: option,
+                          child: Text(option.toString()),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                'Mostrando ${startIdx + 1}–$endIdx de ${_formatInt(totalCount)}',
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
           const Spacer(),
           _PageIconButton(
@@ -1513,16 +1554,26 @@ class _CommissionsPageState extends State<CommissionsPage> {
 
     final groupValue = _groupingSearchValue(row).trim();
     if (groupValue.isEmpty) return 0.0;
-    final query = normalizeKey(groupValue);
+    final query = _normalizeRateMatchKey(groupValue);
     if (query.isEmpty) return 0.0;
 
     for (final rateRow in _commissionRatesByPartnerName) {
-      final razaoSocial = normalizeKey(rateRow['razao_social'] ?? '');
+      final razaoSocial = _normalizeRateMatchKey(rateRow['razao_social'] ?? '');
       if (razaoSocial.isEmpty) continue;
-      if (!razaoSocial.contains(query)) continue;
+      if (!razaoSocial.contains(query) && !query.contains(razaoSocial)) continue;
       return _parsePercent(rateRow[serviceType], defaultPercent: 0.0);
     }
     return 0.0;
+  }
+
+  String _normalizeRateMatchKey(String input) {
+    final normalized = normalizeKey(input);
+    if (normalized.isEmpty) return '';
+    final collapsed = normalized.replaceAllMapped(
+      RegExp(r'(.)\1+'),
+      (match) => match.group(1)!,
+    );
+    return collapsed;
   }
 
   String _groupingSearchValue(Map<String, String> row) {
