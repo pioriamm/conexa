@@ -7,6 +7,13 @@ class CommissionsPage extends StatefulWidget {
   State<CommissionsPage> createState() => _CommissionsPageState();
 }
 
+enum _GroupingMode {
+  none,
+  partner,
+  seller,
+  customSystem,
+}
+
 class _CommissionsPageState extends State<CommissionsPage> {
   static const int _pageSize = 20;
   static const List<String> _gridColumns = [
@@ -52,7 +59,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
   int _tenexProcessed = 0;
   int _tenexTotal = 0;
   int _currentPage = 0;
-  bool _groupByPartner = false;
+  _GroupingMode _groupingMode = _GroupingMode.none;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   late final Map<String, Map<String, double>> _commissionRatesByCnpj =
@@ -449,7 +456,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
                                 },
                                 decoration: InputDecoration(
                                   isDense: true,
-                                  hintText: 'Pesquisar Grupo, Parceiro ou Vendedor',
+                                  hintText: 'Pesquisar Grupo, Parceiro, Vendedor ou Custom Sistema',
                                   prefixIcon: const Icon(Icons.search, size: 18),
                                   filled: true,
                                   fillColor: AppColors.surfaceAlt,
@@ -486,34 +493,29 @@ class _CommissionsPageState extends State<CommissionsPage> {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            FilterChip(
-                              selected: _groupByPartner,
-                              label: const Text('Agrupar Parceiro',
-                                style: TextStyle(color: Colors.white),),
-
-                              backgroundColor: const Color(0xFF103339),
-                              selectedColor: const Color(0xFF87B526),
-
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-
-                              onSelected: (value) {
-                                setState(() {
-                                  _groupByPartner = value;
-                                  _currentPage = 0;
-                                });
-                              },
+                            _buildGroupingChip(
+                              label: 'Agrupar Parceiro',
+                              mode: _GroupingMode.partner,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildGroupingChip(
+                              label: 'Agrupar Vendedor',
+                              mode: _GroupingMode.seller,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildGroupingChip(
+                              label: 'Agrupar Custom Sistema',
+                              mode: _GroupingMode.customSystem,
                             ),
                           ],
                         ),
                       ),
                       const Divider(height: 1, color: AppColors.borderLight),
-                      _groupByPartner
-                          ? _buildPartnerGroups(filteredRows)
+                      _isGroupingEnabled
+                          ? _buildGroupedView(filteredRows)
                           : _buildCommissionsTable(pageRows),
                       const Divider(height: 1, color: AppColors.borderLight),
-                      _groupByPartner
+                      _isGroupingEnabled
                           ? _groupedFooter(filteredRows.length)
                           : _contadorPaginasRodape(
                         totalCount: filteredRows.length,
@@ -953,7 +955,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
       child: Text(
-        '${_formatInt(totalCount)} transações filtradas e agrupadas por parceiro',
+        '${_formatInt(totalCount)} transações filtradas e agrupadas por ${_groupingLabel.toLowerCase()}',
         style: const TextStyle(
           fontFamily: 'Inter',
           fontSize: 12,
@@ -963,11 +965,62 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
   }
 
-  Widget _buildPartnerGroups(List<AdminCobrancaRow> rows) {
+  Widget _buildGroupingChip({
+    required String label,
+    required _GroupingMode mode,
+  }) {
+    final selected = _groupingMode == mode;
+    return FilterChip(
+      selected: selected,
+      label: Text(label, style: const TextStyle(color: Colors.white)),
+      backgroundColor: const Color(0xFF103339),
+      selectedColor: const Color(0xFF87B526),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(999),
+      ),
+      onSelected: (value) {
+        setState(() {
+          _groupingMode = value ? mode : _GroupingMode.none;
+          _currentPage = 0;
+        });
+      },
+    );
+  }
+
+  bool get _isGroupingEnabled => _groupingMode != _GroupingMode.none;
+
+  String get _groupingLabel {
+    switch (_groupingMode) {
+      case _GroupingMode.partner:
+        return 'Parceiro';
+      case _GroupingMode.seller:
+        return 'Vendedor';
+      case _GroupingMode.customSystem:
+        return 'Custom Sistema';
+      case _GroupingMode.none:
+        return 'Nenhum';
+    }
+  }
+
+  String get _groupingColumn {
+    switch (_groupingMode) {
+      case _GroupingMode.partner:
+        return 'Parceiro';
+      case _GroupingMode.seller:
+        return 'Vendedor';
+      case _GroupingMode.customSystem:
+        return 'Custom Sistema';
+      case _GroupingMode.none:
+        return '';
+    }
+  }
+
+  Widget _buildGroupedView(List<AdminCobrancaRow> rows) {
+    final groupingColumn = _groupingColumn;
     final grouped = <String, List<AdminCobrancaRow>>{};
     for (final row in rows) {
-      final partner = _displayValue(row.values['Parceiro'] ?? '');
-      grouped.putIfAbsent(partner, () => []).add(row);
+      final groupValue = _displayValue(row.values[groupingColumn] ?? '');
+      grouped.putIfAbsent(groupValue, () => []).add(row);
     }
     final sortedKeys = grouped.keys.toList()
       ..sort((a, b) {
@@ -983,8 +1036,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         itemBuilder: (context, index) {
-          final partner = sortedKeys[index];
-          final transactions = grouped[partner]!;
+          final groupValue = sortedKeys[index];
+          final transactions = grouped[groupValue]!;
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: ExpansionTile(
@@ -997,14 +1050,14 @@ class _CommissionsPageState extends State<CommissionsPage> {
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide.none,
               ),
-              title: Text('$partner (${transactions.length})'),
+              title: Text('$groupValue (${transactions.length})'),
               subtitle: const Text('Clique para expandir transações relacionadas'),
               trailing: Tooltip(
                 message: 'Exportar relatório em Excel',
                 child: IconButton(
                   icon: const Icon(Icons.download_outlined, color: Color(0xFF87b526),),
-                  onPressed: () => _exportPartnerReport(
-                    partner: partner,
+                  onPressed: () => _exportGroupedReport(
+                    groupValue: groupValue,
                     transactions: transactions,
                   ),
                 ),
@@ -1027,9 +1080,11 @@ class _CommissionsPageState extends State<CommissionsPage> {
       final grupo = normalizeKey(row.values['Grupo'] ?? '');
       final parceiro = normalizeKey(row.values['Parceiro'] ?? '');
       final vendedor = normalizeKey(row.values['Vendedor'] ?? '');
+      final customSistema = normalizeKey(row.values['Custom Sistema'] ?? '');
       return grupo.contains(query) ||
           parceiro.contains(query) ||
-          vendedor.contains(query);
+          vendedor.contains(query) ||
+          customSistema.contains(query);
     }).toList();
   }
 
@@ -1115,8 +1170,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
     return buf.toString();
   }
 
-  Future<void> _exportPartnerReport({
-    required String partner,
+  Future<void> _exportGroupedReport({
+    required String groupValue,
     required List<AdminCobrancaRow> transactions,
   }) async {
     if (transactions.isEmpty) return;
@@ -1155,7 +1210,7 @@ class _CommissionsPageState extends State<CommissionsPage> {
     );
 
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final fileName = _buildPartnerReportFileName(partner);
+    final fileName = _buildGroupedReportFileName(groupValue);
 
     final anchor = html.AnchorElement(href: url)
       ..setAttribute('download', fileName)
@@ -1528,15 +1583,16 @@ class _CommissionsPageState extends State<CommissionsPage> {
         .replaceAll(RegExp(r'[<>:"/\\|?*]'), ' ')
         .replaceAll(RegExp(r'\s+'), '_')
         .trim();
-    return sanitized.isEmpty ? 'relatorio_parceiro' : sanitized;
+    return sanitized.isEmpty ? 'relatorio_agrupamento' : sanitized;
   }
 
-  String _buildPartnerReportFileName(String partner) {
+  String _buildGroupedReportFileName(String groupValue) {
     final now = DateTime.now();
     final year = now.year.toString();
     final month = now.month.toString().padLeft(2, '0');
-    final safePartner = _sanitizeFileName(partner).toLowerCase();
-    return '${year}_${month}_$safePartner.xlsx';
+    final groupingType = _sanitizeFileName(_groupingLabel).toLowerCase();
+    final safeGroupValue = _sanitizeFileName(groupValue).toLowerCase();
+    return '${year}_${month}_${groupingType}_$safeGroupValue.xlsx';
   }
 }
 
